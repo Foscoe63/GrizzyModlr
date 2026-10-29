@@ -464,6 +464,17 @@ final class ProjectStore {
 
     // MARK: - reference views (multi-view input)
 
+    /// Where the six synthesized candidate views live (`synth_0.png` … `synth_5.png`).
+    func synthViewURLs(for id: Project.ID) -> [URL] {
+        (0 ..< 6).map { folder(for: id).appendingPathComponent("synth_\($0).png") }
+    }
+
+    /// The candidates that exist on disk, by tile index.
+    func synthesizedViews(for id: Project.ID) -> [Int: URL] {
+        Dictionary(uniqueKeysWithValues: synthViewURLs(for: id).enumerated()
+            .filter { FileManager.default.fileExists(atPath: $0.element.path) }.map { ($0.offset, $0.element) })
+    }
+
     func extraViewURL(_ view: ReferenceView, for project: Project) -> URL? {
         guard let name = project.extraViewsRaw?[view.rawValue] else { return nil }
         let url = folder(for: project.id).appendingPathComponent(name)

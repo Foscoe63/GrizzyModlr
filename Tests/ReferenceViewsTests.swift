@@ -80,4 +80,13 @@ final class ReferenceViewsTests: XCTestCase {
         store.discardShapeRun(staged)
         XCTAssertFalse(FileManager.default.fileExists(atPath: snap.path))
     }
+
+    func testViewSynthesisModelIsOptionalAndHasPinnedFiles() {
+        XCTAssertFalse(ModelCatalog.everything.contains(.viewSynthesis))
+        let m = ModelCatalog.model(.viewSynthesis)
+        XCTAssertEqual(m.files.count, 4)
+        XCTAssertTrue(m.files.allSatisfy { $0.sha256.count == 64 && $0.bytes > 100_000_000 })
+        XCTAssertEqual(m.repo, "sudo-ai/zero123plus-v1.2")
+        XCTAssertTrue(m.remoteURL(for: m.files[1]).absoluteString.contains("/resolve/2da07e89"))
+    }
 }

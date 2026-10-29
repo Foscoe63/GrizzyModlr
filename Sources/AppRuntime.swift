@@ -31,8 +31,20 @@ final class AppRuntime {
     private(set) var lastShapeRunDetails: [Project.ID: RunDetails] = [:]
     private(set) var lastPaintRunDetails: [Project.ID: RunDetails] = [:]
 
+    /// Zero123++ view synthesis runs outside the reducer (a short, user-initiated job that
+    /// only ever runs while no shape or paint job holds the GPU).
+    enum ViewSynthState: Equatable {
+        case running(Double)
+        case failed(String)
+    }
+    private(set) var viewSynth: [Project.ID: ViewSynthState] = [:]
+    /// Bumped each time a synthesis finishes so views can show the fresh candidates.
+    private(set) var viewSynthRevision: [Project.ID: Int] = [:]
+
     @ObservationIgnored private let shapeEngine = ShapeEngine()
     @ObservationIgnored private let paintEngine = PaintEngine()
+    @ObservationIgnored private let viewSynthEngine = ViewSynthEngine()
+    @ObservationIgnored private var viewSynthRuns: [Project.ID: ViewSynthEngine.Run] = [:]
     @ObservationIgnored private let arbiter: EngineArbiter
     @ObservationIgnored private var downloads: DownloadManager!
     @ObservationIgnored private let bridge = EventBridge()
@@ -128,6 +140,45 @@ final class AppRuntime {
         guard let project = store.project(id) else { return }
         dispatch(.paintRequested(project: id, model: project.resolvedPaintSettings.model.modelID))
     }
+
+    /// Generates six candidate side views for the project's main image.
+    func synthesizeViews(_ id: Project.ID) {
+        guard viewSynth[id] == nil, let project = store.project(id), let image = store.imageURL(for: project) else { return }
+        guard let weights = ModelStore.viewSynthesisDir() else { showModelManager(); return }
+        let busy = state.shape.values.contains { $0.state.isRunning } || state.paint.values.contains { $0.state.isRunning }
+        guard !busy else {
+            viewSynth[id] = .failed("Wait for the current generation to finish first.")
+            return
+        }
+        viewSynth[id] = .running(0)
+        let outputs = store.synthViewURLs(for: id)
+        let engine = viewSynthEngine, shape = shapeEngine, paint = paintEngine
+        Task { [weak self] in
+            await shape.evictAndWait()                    // free the other engines' weights first
+            await paint.evictAndWait()
+            guard let self else { return }
+            let run = engine.synthesize(
+                imageURL: image, weightsDir: weights, seed: UInt64.random(in: 0 ..< UInt64(UInt32.max)),
+                outputs: outputs,
+                onProgress: { p in Task { @MainActor in
+                    if case .running = self.viewSynth[id] { self.viewSynth[id] = .running(p) }
+                } },
+                onFinish: { outcome in Task { @MainActor in
+                    self.viewSynthRuns[id] = nil
+                    switch outcome {
+                    case .success:
+                        self.viewSynth[id] = nil
+                        self.viewSynthRevision[id, default: 0] += 1
+                    case .failure(let message):
+                        self.viewSynth[id] = message == "Cancelled" ? nil : .failed(message)
+                    }
+                } })
+            self.viewSynthRuns[id] = run
+        }
+    }
+
+    func cancelViewSynthesis(_ id: Project.ID) { viewSynthRuns[id]?.cancel() }
+    func dismissViewSynthFailure(_ id: Project.ID) { if case .failed = viewSynth[id] { viewSynth[id] = nil } }
 
     func cancelShape(_ id: Project.ID) { dispatch(.shapeCancelRequested(project: id)) }
     func cancelPaint(_ id: Project.ID) { dispatch(.paintCancelRequested(project: id)) }

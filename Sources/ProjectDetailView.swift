@@ -116,6 +116,7 @@ struct ProjectDetailView: View {
                     Spacer()
                     ReferenceViewsStrip(projectID: project.id, reloadKey: store.inputVersion(project.id))
                         .environment(store)
+                        .environment(runtime)
                 }
                 .padding(.bottom, store.importErrors[project.id] == nil ? 14 : 70)
                 .frame(maxWidth: .infinity, alignment: .center)

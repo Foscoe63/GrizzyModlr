@@ -67,6 +67,11 @@ enum ModelStore {
         return installDir(for: model.modelID).appendingPathComponent("model.fp16.safetensors")
     }
 
+    /// Install directory of the Zero123++ weights (diffusers layout); nil unless fully installed.
+    static func viewSynthesisDir() -> URL? {
+        isInstalled(.viewSynthesis) ? installDir(for: .viewSynthesis) : nil
+    }
+
     /// The multi-view (2mv) checkpoint; nil unless fully installed.
     static func multiViewWeightsFile() -> URL? {
         guard isInstalled(.shapeMultiView) else { return nil }

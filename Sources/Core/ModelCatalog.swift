@@ -8,6 +8,8 @@ enum ModelID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case paintLarge = "paint-large"
     /// Hunyuan3D-2mv: optional, used automatically when a project has 2+ reference views.
     case shapeMultiView = "shape-multiview"
+    /// Zero123++ v1.2: optional, turns the main image into six candidate side views.
+    case viewSynthesis = "view-synthesis"
 
     var id: String { rawValue }
 
@@ -17,7 +19,7 @@ enum ModelID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     var kind: EngineKind {
         switch self {
         case .shapeSmall, .shapeLarge, .shapeMultiView: return .shape
-        case .paintSmall, .paintLarge: return .paint
+        case .paintSmall, .paintLarge, .viewSynthesis: return .paint
         }
     }
 }
@@ -144,6 +146,22 @@ enum ModelCatalog {
                 CatalogFile(path: "model.fp16.safetensors", bytes: 4_928_151_562,
                             sha256: "d36f5881bcdc56726b73e517cd444c13c60732431622da7268145355c8d38e9c",
                             remotePath: "hunyuan3d-dit-v2-mv/model.fp16.safetensors"),
+            ]),
+        CatalogModel(
+            id: .viewSynthesis,
+            displayName: "View synthesis",
+            detail: "Zero123++ v1.2 · six novel views from one image · weights CC-BY-NC 4.0 (non-commercial)",
+            repo: "sudo-ai/zero123plus-v1.2",
+            revision: "2da07e89919e1a130c9b5add1584c70c7aa065fd",
+            files: [
+                CatalogFile(path: "text_encoder/model.safetensors", bytes: 680_820_392,
+                            sha256: "bc1827c465450322616f06dea41596eac7d493f4e95904dcb51f0fc745c4e13f"),
+                CatalogFile(path: "unet/diffusion_pytorch_model.safetensors", bytes: 3_463_726_504,
+                            sha256: "481a8c8d268810095c6bc85ea71b44a0bb9a5ea6457d6c8792275f43989442a3"),
+                CatalogFile(path: "vae/diffusion_pytorch_model.safetensors", bytes: 167_335_342,
+                            sha256: "3e4c08995484ee61270175e9e7a072b66a6e4eeb5f0c266667fe1f45b90daf9a"),
+                CatalogFile(path: "vision_encoder/model.safetensors", bytes: 1_264_217_240,
+                            sha256: "ae616c24393dd1854372b0639e5541666f7521cbe219669255e865cb7f89466a"),
             ]),
     ]
 
