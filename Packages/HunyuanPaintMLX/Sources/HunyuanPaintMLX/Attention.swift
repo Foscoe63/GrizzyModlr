@@ -15,6 +15,9 @@ public final class XAttn {
     public var nPbr: Int
     public var dino: MLXArray?
     public var ropeByTokens: [Int: (MLXArray, MLXArray)]
+    /// Zero123++-style reference-only attention: in "r" mode attn1 attends over its own
+    /// tokens plus the reference tokens stored in "w" mode (same weights, no extra module).
+    public var selfRef: Bool = false
     public init(mode: String, numInBatch: Int, conditionEmbed: [String: MLXArray] = [:],
                 refScale: Float = 1, mvaScale: Float = 1, nPbr: Int = 1,
                 dino: MLXArray? = nil, ropeByTokens: [Int: (MLXArray, MLXArray)] = [:]) {
@@ -63,7 +66,13 @@ public enum Attn {
                                   context: MLXArray?, useMa: Bool, useRa: Bool,
                                   layerName: String?, xattn: XAttn?) -> MLXArray {
         let normH = layerNorm(x, w, "\(p).norm1")
-        var h = attention(normH, w, "\(p).attn1", heads: heads, dimHead: dimHead) + x
+        var h: MLXArray
+        if let xa = xattn, xa.selfRef, xa.mode.contains("r"), let ln = layerName, let ref = xa.conditionEmbed[ln] {
+            h = attention(normH, w, "\(p).attn1", heads: heads, dimHead: dimHead,
+                          context: concatenated([normH, ref], axis: 1)) + x
+        } else {
+            h = attention(normH, w, "\(p).attn1", heads: heads, dimHead: dimHead) + x
+        }
         if let xa = xattn, let ln = layerName {
             let n = xa.numInBatch
             let B = x.dim(0) / n, L = x.dim(1), C = x.dim(2)
