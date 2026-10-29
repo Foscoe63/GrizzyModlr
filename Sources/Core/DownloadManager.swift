@@ -29,6 +29,8 @@ final class DownloadManager: @unchecked Sendable {
     }
 
     private let config: Configuration
+    /// Mutable copy of `config.rootDir`: the models folder can be moved to another drive.
+    private var rootDir: URL
     private let emit: @Sendable (AppEvent) -> Void
 
     private let lock = NSLock()
@@ -41,13 +43,20 @@ final class DownloadManager: @unchecked Sendable {
 
     init(configuration: Configuration, emit: @escaping @Sendable (AppEvent) -> Void) {
         self.config = configuration
+        self.rootDir = configuration.rootDir
         self.emit = emit
     }
 
     // MARK: - paths
 
     func installDir(for model: ModelID) -> URL {
-        config.rootDir.appendingPathComponent(model.slug, isDirectory: true)
+        lock.lock(); let root = rootDir; lock.unlock()
+        return root.appendingPathComponent(model.slug, isDirectory: true)
+    }
+
+    /// Points the manager at a different models folder (only while no download is active).
+    func setRootDir(_ url: URL) {
+        lock.lock(); rootDir = url; sessionVerified.removeAll(); lock.unlock()
     }
 
     private func finalURL(_ model: ModelID, _ file: CatalogFile) -> URL {

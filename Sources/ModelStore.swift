@@ -11,11 +11,37 @@ import Foundation
 ///   <file>.partial       in-flight downloads (resumable)
 ///   models/.compat/…     symlink bridges to the vendored pipelines' expected paths
 enum ModelStore {
-    /// Container-side models root (created on demand).
-    static var modelsRoot: URL {
-        let base = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    static let customRootKey = "modelsRootPath"
+
+    /// The built-in location under Application Support.
+    static var defaultRoot: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Modelr/models", isDirectory: true)
+    }
+
+    /// A user-chosen models folder (e.g. on a fast external drive), if any.
+    static var customRoot: URL? {
+        UserDefaults.standard.string(forKey: customRootKey).map { URL(fileURLWithPath: $0, isDirectory: true) }
+    }
+
+    static func setCustomRoot(_ url: URL?) {
+        if let url { UserDefaults.standard.set(url.path, forKey: customRootKey) }
+        else { UserDefaults.standard.removeObject(forKey: customRootKey) }
+    }
+
+    /// False when a custom folder is set but its drive isn't mounted (the folder is missing).
+    static var rootIsAvailable: Bool {
+        guard let custom = customRoot else { return true }
+        var isDir: ObjCBool = false
+        return FileManager.default.fileExists(atPath: custom.path, isDirectory: &isDir) && isDir.boolValue
+    }
+
+    /// The active models root. The default is created on demand; a custom folder is never
+    /// created implicitly — with its drive unplugged, `mkdir -p` would otherwise fabricate a
+    /// folder under /Volumes on the boot disk.
+    static var modelsRoot: URL {
+        if let custom = customRoot { return custom }
+        let base = defaultRoot
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base
     }

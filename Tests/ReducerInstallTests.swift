@@ -277,4 +277,25 @@ final class ReducerInstallTests: XCTestCase {
         _ = AppReducer.reduce(&s, .migrationFinished(report: BootReport()))
         XCTAssertEqual(s.phase, .onboarding)
     }
+
+    // MARK: rescan after the models folder changes
+
+    func testRescanRederivesInstallStatesWhenIdle() {
+        var s = AppState.ready(installed: [.shapeSmall])
+        let report = BootReport(installed: [.paintSmall], resumable: [.shapeLarge: 1234], onboardingComplete: true)
+        // The paused model becomes a persisted install intent (resume after relaunch).
+        XCTAssertEqual(reduce(&s, .modelsRescanned(report: report)), [.persistInstallIntents([.shapeLarge])])
+        XCTAssertEqual(s.installState(.shapeSmall), .notInstalled)
+        XCTAssertEqual(s.installState(.paintSmall), .installed)
+        XCTAssertEqual(s.installState(.shapeLarge), .paused(resumeBytes: 1234))
+        XCTAssertEqual(s.phase, .ready)
+    }
+
+    func testRescanIgnoredWhileADownloadIsActive() {
+        var s = readyState()
+        reduce(&s, .installRequested(.shapeSmall))
+        reduce(&s, .modelsRescanned(report: BootReport(installed: [.paintLarge], onboardingComplete: true)))
+        XCTAssertEqual(s.installState(.paintLarge), .notInstalled)
+        if case .downloading = s.installState(.shapeSmall) {} else { XCTFail("download should be untouched") }
+    }
 }

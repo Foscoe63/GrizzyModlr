@@ -38,6 +38,14 @@ final class AppRuntime {
         case failed(String)
     }
     private(set) var viewSynth: [Project.ID: ViewSynthState] = [:]
+
+    /// Moving the models folder to another drive (copy → verify → switch → delete old copy).
+    enum RelocationState: Equatable {
+        case running(copied: Int64, total: Int64, file: String)
+        case failed(String)
+    }
+    private(set) var relocation: RelocationState?
+    @ObservationIgnored private var relocationFlag: RelocationFlag?
     /// Bumped each time a synthesis finishes so views can show the fresh candidates.
     private(set) var viewSynthRevision: [Project.ID: Int] = [:]
 
@@ -180,6 +188,97 @@ final class AppRuntime {
     func cancelViewSynthesis(_ id: Project.ID) { viewSynthRuns[id]?.cancel() }
     func dismissViewSynthFailure(_ id: Project.ID) { if case .failed = viewSynth[id] { viewSynth[id] = nil } }
 
+    // MARK: - models location
+
+    /// Moving or re-pointing the library is only safe while nothing reads or writes it.
+    var canChangeModelsLocation: Bool {
+        if case .running? = relocation { return false }
+        return state.activeInstall == nil && state.installQueue.isEmpty
+            && !state.shape.values.contains { $0.state.isRunning }
+            && !state.paint.values.contains { $0.state.isRunning }
+            && viewSynth.values.allSatisfy { if case .running = $0 { return false } else { return true } }
+    }
+
+    /// Copies the library into `picked` (a "Modelr Models" folder is created inside it), then
+    /// switches to it and removes the old copy once every file is verified.
+    func moveModels(toFolder picked: URL) {
+        guard canChangeModelsLocation else { return }
+        let dst = ModelRelocation.resolveRoot(picked: picked)
+        startRelocation(from: ModelStore.modelsRoot, to: dst,
+                        customAfter: dst.standardizedFileURL == ModelStore.defaultRoot.standardizedFileURL ? nil : dst)
+    }
+
+    /// Uses a folder that already holds models (e.g. copied earlier, or from another Mac).
+    func useExistingModels(at picked: URL) {
+        guard canChangeModelsLocation else { return }
+        let nested = picked.appendingPathComponent("Modelr Models", isDirectory: true)
+        let root: URL
+        if !ModelRelocation.items(in: picked).isEmpty { root = picked }
+        else if !ModelRelocation.items(in: nested).isEmpty { root = nested }
+        else { relocation = .failed("No models were found in that folder."); return }
+        switchModelsRoot(to: root)
+    }
+
+    /// Back to the built-in location; optionally copies the library back first.
+    func resetModelsLocation(moveBack: Bool) {
+        guard canChangeModelsLocation, ModelStore.customRoot != nil else { return }
+        if moveBack, ModelStore.rootIsAvailable {
+            startRelocation(from: ModelStore.modelsRoot, to: ModelStore.defaultRoot, customAfter: nil)
+        } else {
+            switchModelsRoot(to: ModelStore.defaultRoot)
+        }
+    }
+
+    func cancelRelocation() { relocationFlag?.cancel() }
+    func dismissRelocationFailure() { if case .failed? = relocation { relocation = nil } }
+
+    private func switchModelsRoot(to root: URL) {
+        let isDefault = root.standardizedFileURL == ModelStore.defaultRoot.standardizedFileURL
+        ModelStore.setCustomRoot(isDefault ? nil : root)
+        downloads.setRootDir(root)
+        relocation = nil
+        bridge.send(.modelsRescanned(report: Self.scanBootReport(downloads: downloads)))
+    }
+
+    private func startRelocation(from src: URL, to dst: URL, customAfter: URL?) {
+        guard src.standardizedFileURL != dst.standardizedFileURL else {
+            relocation = .failed("That's already the models folder."); return
+        }
+        guard ModelStore.rootIsAvailable else { relocation = .failed("The models drive isn't connected."); return }
+        let items = ModelRelocation.items(in: src)
+        guard !items.isEmpty else { switchModelsRoot(to: customAfter ?? ModelStore.defaultRoot); return }
+        let total = items.reduce(0) { $0 + $1.bytes }
+        let free = ModelRelocation.freeBytes(at: dst)
+        let needed = ModelRelocation.sameVolume(src, dst) ? 0 : total      // a same-volume copy is a clone
+        guard needed <= free else {
+            relocation = .failed(ModelRelocation.Failure.notEnoughSpace(needed: needed, free: free).localizedDescription)
+            return
+        }
+        relocation = .running(copied: 0, total: total, file: "")
+        let flag = RelocationFlag()
+        relocationFlag = flag
+        Task.detached(priority: .userInitiated) { [weak self] in
+            var lastUpdate = Date.distantPast
+            do {
+                try FileManager.default.createDirectory(at: dst, withIntermediateDirectories: true)
+                try ModelRelocation.copy(items, from: src, to: dst, progress: { done, name in
+                    let now = Date()
+                    guard now.timeIntervalSince(lastUpdate) > 0.15 || done == total else { return }
+                    lastUpdate = now
+                    Task { @MainActor in
+                        if case .running? = self?.relocation { self?.relocation = .running(copied: done, total: total, file: name) }
+                    }
+                }, isCancelled: { flag.cancelled })
+                await MainActor.run { self?.switchModelsRoot(to: customAfter ?? dst) }
+                ModelRelocation.removeSources(items, from: src)            // only after the switch
+            } catch let f as ModelRelocation.Failure where f == .cancelled {
+                await MainActor.run { self?.relocation = nil }
+            } catch {
+                await MainActor.run { self?.relocation = .failed(error.localizedDescription) }
+            }
+        }
+    }
+
     func cancelShape(_ id: Project.ID) { dispatch(.shapeCancelRequested(project: id)) }
     func cancelPaint(_ id: Project.ID) { dispatch(.paintCancelRequested(project: id)) }
 
@@ -229,6 +328,10 @@ final class AppRuntime {
 
         // model install
         case .startDownload(let model, let attempt):
+            guard ModelStore.rootIsAvailable else {
+                dispatch(.downloadFailed(model, attempt: attempt, message: "The models drive isn't connected."))
+                break
+            }
             downloads.start(model, attempt: attempt)
 
         case .pauseDownload(let model):
@@ -529,4 +632,12 @@ final class AppRuntime {
         guard parts.count == 2, let k = Int(parts[0]), let n = Int(parts[1]) else { return (0, 0) }
         return (k, n)
     }
+}
+
+/// Cooperative cancel flag for a models-folder copy.
+final class RelocationFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _cancelled = false
+    var cancelled: Bool { lock.lock(); defer { lock.unlock() }; return _cancelled }
+    func cancel() { lock.lock(); _cancelled = true; lock.unlock() }
 }

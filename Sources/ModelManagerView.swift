@@ -28,6 +28,8 @@ struct ModelManagerView: View {
                 }
             }
             Divider()
+            ModelLocationSection()
+            Divider()
             footer
         }
         .padding(.vertical, 8)
@@ -180,5 +182,97 @@ private struct ModelRow: View {
                 .font(.caption).foregroundStyle(.orange)
                 .lineLimit(2)
         }
+    }
+}
+
+/// Settings → Models → location: keep the library on another (e.g. fast external) drive.
+private struct ModelLocationSection: View {
+    @Environment(AppRuntime.self) private var runtime
+
+    private var root: URL { ModelStore.modelsRoot }
+    private var isCustom: Bool { ModelStore.customRoot != nil }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 3)) { _ in
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: isCustom ? "externaldrive.fill" : "internaldrive").foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Models location").font(.callout.weight(.semibold))
+                        Text(root.path(percentEncoded: false))
+                            .font(.caption).foregroundStyle(.secondary)
+                            .lineLimit(1).truncationMode(.middle)
+                            .help(root.path(percentEncoded: false))
+                        if !ModelStore.rootIsAvailable {
+                            Label("This drive isn't connected. Reconnect it, or switch back to the default location.",
+                                  systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption).foregroundStyle(.orange)
+                        }
+                    }
+                    Spacer()
+                    controls
+                }
+                progress
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+        }
+    }
+
+    @ViewBuilder
+    private var controls: some View {
+        let enabled = runtime.canChangeModelsLocation
+        HStack(spacing: 6) {
+            Button("Move…") { if let url = pickFolder("Move Models Here", "Choose the folder or drive to move the models to.") { runtime.moveModels(toFolder: url) } }
+                .disabled(!enabled || !ModelStore.rootIsAvailable)
+            Button("Use Existing…") { if let url = pickFolder("Use Models Here", "Choose a folder that already contains the models.") { runtime.useExistingModels(at: url) } }
+                .disabled(!enabled)
+            if isCustom {
+                Menu("Default") {
+                    Button("Use default location") { runtime.resetModelsLocation(moveBack: false) }
+                    Button("Move back to default location") { runtime.resetModelsLocation(moveBack: true) }
+                        .disabled(!ModelStore.rootIsAvailable)
+                }
+                .menuStyle(.borderlessButton).fixedSize().disabled(!enabled)
+            }
+        }
+        .controlSize(.small)
+        .help(enabled ? "" : "Finish downloads and generations first.")
+    }
+
+    @ViewBuilder
+    private var progress: some View {
+        switch runtime.relocation {
+        case .running(let copied, let total, let file)?:
+            VStack(alignment: .leading, spacing: 3) {
+                ProgressView(value: total > 0 ? Double(copied) / Double(total) : 0)
+                HStack {
+                    Text("Copying \(OnboardingView.gb(copied)) of \(OnboardingView.gb(total)) · \((file as NSString).lastPathComponent)")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Spacer()
+                    Button("Cancel") { runtime.cancelRelocation() }.controlSize(.small)
+                }
+                Text("The old copy is deleted only after everything is verified.")
+                    .font(.caption2).foregroundStyle(.tertiary)
+            }
+        case .failed(let message)?:
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text(message).font(.caption)
+                Spacer()
+                Button { runtime.dismissRelocationFailure() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
+            }
+        case nil:
+            Text(isCustom ? "Models are stored on a custom drive. Generation reads them from there."
+                          : "Models are stored in the app's folder. Move them to a faster or larger drive any time.")
+                .font(.caption2).foregroundStyle(.tertiary)
+        }
+    }
+
+    private func pickFolder(_ title: String, _ message: String) -> URL? {
+        let panel = NSOpenPanel()
+        panel.title = title; panel.message = message; panel.prompt = "Choose"
+        panel.canChooseDirectories = true; panel.canChooseFiles = false
+        panel.canCreateDirectories = true; panel.allowsMultipleSelection = false
+        return panel.runModal() == .OK ? panel.url : nil
     }
 }

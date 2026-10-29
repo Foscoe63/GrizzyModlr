@@ -11,6 +11,10 @@ enum AppEvent: Equatable {
     /// Legacy `models/shape/**`+`models/paint/**` were migrated (§2.3); fresh scan attached.
     case migrationFinished(report: BootReport)
 
+    /// The models folder changed (moved / pointed at another drive); re-derive every model's
+    /// install state from the new location.
+    case modelsRescanned(report: BootReport)
+
     // MARK: onboarding (§4.2)
 
     case onboardingAdvanced                          // Welcome → ChooseModels

@@ -33,6 +33,11 @@ enum AppReducer {
                 applyBootReport(&state, report)
             }
 
+        case .modelsRescanned(let report):
+            // Only between installs: an active/queued download owns its model states.
+            guard state.phase == .ready, state.activeInstall == nil, state.installQueue.isEmpty else { break }
+            applyModelStates(&state, report)
+
         case .migrationFinished(let report):
             guard state.phase == .migrating else { break }
             applyBootReport(&state, report)
@@ -416,6 +421,16 @@ enum AppReducer {
     // MARK: - helpers (all pure)
 
     private static func applyBootReport(_ state: inout AppState, _ report: BootReport) {
+        applyModelStates(&state, report)
+        if report.onboardingComplete || !report.installed.isEmpty {
+            state.phase = .ready
+        } else {
+            state.phase = .onboarding
+            state.onboarding = OnboardingState()
+        }
+    }
+
+    private static func applyModelStates(_ state: inout AppState, _ report: BootReport) {
         for model in ModelID.allCases {
             if report.installed.contains(model) {
                 state.models[model] = .installed
@@ -424,12 +439,6 @@ enum AppReducer {
             } else {
                 state.models[model] = .notInstalled
             }
-        }
-        if report.onboardingComplete || !report.installed.isEmpty {
-            state.phase = .ready
-        } else {
-            state.phase = .onboarding
-            state.onboarding = OnboardingState()
         }
     }
 
