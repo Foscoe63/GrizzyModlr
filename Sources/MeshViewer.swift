@@ -161,7 +161,7 @@ struct MeshViewer: NSViewRepresentable {
 
     // MARK: - loading
 
-    private static func load(_ content: ViewerContent) -> (node: SCNNode, center: SCNVector3, radius: CGFloat)? {
+    static func load(_ content: ViewerContent) -> (node: SCNNode, center: SCNVector3, radius: CGFloat)? {
         switch content {
         case .mesh(let url):                      return loadMesh(url)
         case .texturedMesh(let mesh, let tex):    return loadTexturedMesh(mesh, texture: tex)

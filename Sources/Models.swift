@@ -285,11 +285,18 @@ struct Project: Identifiable, Codable, Hashable {
     /// Extra reference views (view name → file in the project folder). The main image is
     /// always the front view; with any extra view the multi-view model is used.
     var extraViewsRaw: [String: String]?
+    /// Objects placed in this project's composed scene (see SceneComposition).
+    var sceneItemsRaw: [SceneItem]?
 
     init(id: UUID = UUID(), name: String, createdAt: Date = Date()) {
         self.id = id
         self.name = name
         self.createdAt = createdAt
+    }
+
+    var sceneItems: [SceneItem] {
+        get { sceneItemsRaw ?? [] }
+        set { sceneItemsRaw = newValue.isEmpty ? nil : newValue }
     }
 
     var extraViews: [ReferenceView: String] {

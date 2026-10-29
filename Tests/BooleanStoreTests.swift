@@ -165,3 +165,67 @@ final class TopologyStoreTests: XCTestCase {
         XCTAssertEqual(store.project(id)?.currentGeneration?.editSummary?.hasPrefix("mirrored +Y half"), true)
     }
 }
+
+/// Composed scenes through the store: items persist per project and merge into a new version.
+@MainActor
+final class SceneStoreTests: XCTestCase {
+    private var root: URL!
+    private var store: ProjectStore!
+    private static let tinyPNG = Data(base64Encoded:
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")!
+
+    override func setUpWithError() throws {
+        root = FileManager.default.temporaryDirectory.appendingPathComponent("sc-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        store = ProjectStore(rootDir: root)
+    }
+    override func tearDownWithError() throws { try? FileManager.default.removeItem(at: root) }
+
+    private func projectWithCube() throws -> Project.ID {
+        let p = store.newProject()
+        let img = root.appendingPathComponent("in.png")
+        try Self.tinyPNG.write(to: img)
+        store.setImage(fromURL: img, for: p.id)
+        let staged = try store.stageShapeRun(for: p.id)
+        let v: [SIMD3<Float>] = [[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]]
+        let f: [SIMD3<UInt32>] = [[0,2,1],[0,3,2],[4,5,6],[4,6,7],[0,1,5],[0,5,4],[2,3,7],[2,7,6],[1,2,6],[1,6,5],[3,0,4],[3,4,7]]
+        try MeshDecimator.serialize(positions: v, faces: f).write(to: staged.mesh)
+        XCTAssertNil(store.commitShapeRun(staged))
+        return p.id
+    }
+
+    func testAddUpdateRemoveAndPersist() throws {
+        let id = try projectWithCube()
+        let gen = try XCTUnwrap(store.project(id)?.generations.first)
+        store.addSceneItem(generation: gen, from: id, to: id, spacing: 2.5)
+        store.addSceneItem(generation: gen, from: id, to: id, spacing: 2.5)
+        var items = try XCTUnwrap(store.project(id)?.sceneItems)
+        XCTAssertEqual(items.map(\.x), [0, 2.5])
+        items[1].scale = 2
+        store.updateSceneItem(items[1], for: id)
+        XCTAssertEqual(store.project(id)?.sceneItems[1].scale, 2)
+        let reloaded = ProjectStore(rootDir: root)                              // survives a relaunch
+        XCTAssertEqual(reloaded.project(id)?.sceneItems.count, 2)
+        store.removeSceneItem(items[0].id, for: id)
+        XCTAssertEqual(store.project(id)?.sceneItems.count, 1)
+    }
+
+    func testSaveSceneMergesObjectsIntoANewShapeVersion() async throws {
+        let id = try projectWithCube()
+        let gen = try XCTUnwrap(store.project(id)?.generations.first)
+        store.addSceneItem(generation: gen, from: id, to: id, spacing: 3)
+        store.addSceneItem(generation: gen, from: id, to: id, spacing: 3)
+        let err = await store.saveSceneAsVersion(for: id)
+        XCTAssertNil(err)
+        let proj = try XCTUnwrap(store.project(id))
+        XCTAssertEqual(proj.generations.count, 2)
+        XCTAssertEqual(proj.currentGeneration?.editSummary, "scene of 2 objects")
+        let url = try XCTUnwrap(store.meshURL(for: proj))
+        let mesh = try XCTUnwrap(MeshDecimator.parse(Data(contentsOf: url)))
+        XCTAssertEqual(mesh.faces.count, 24)
+        let xs = mesh.positions.map(\.x)
+        XCTAssertGreaterThan(xs.max()! - xs.min()!, 3)                         // two objects 3 apart
+        let empty = await ProjectStore(rootDir: root).saveSceneAsVersion(for: UUID())
+        XCTAssertEqual(empty, "Generate a shape first.")
+    }
+}

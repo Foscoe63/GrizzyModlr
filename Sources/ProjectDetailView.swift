@@ -18,6 +18,7 @@ struct ProjectDetailView: View {
     @State private var texturePaint: TexturePaintController?
     @State private var paintBusy = false
     @State private var uvEditor: UVEditorModel?
+    @State private var showScene = false
     @State private var shapeViewerCommand: ViewerCommand?
     @State private var paintViewerCommand: ViewerCommand?
     @State private var showMaterialEdit = false
@@ -330,6 +331,14 @@ struct ProjectDetailView: View {
                     VersionHistoryView(projectID: project.id, onClose: { showHistory = false })
                         .environment(store)
                 }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button { showScene = true } label: { Image(systemName: "square.3.layers.3d") }
+                    .help("Compose a scene from several models")
+                    .sheet(isPresented: $showScene) {
+                        SceneComposerView(projectID: project.id, onClose: { showScene = false })
+                            .environment(store)
+                    }
             }
             if #available(macOS 26.0, *) {
                 ToolbarSpacer(.fixed, placement: .primaryAction)

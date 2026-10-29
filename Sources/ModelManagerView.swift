@@ -297,6 +297,7 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.paintSize) private var paintSize = ToolDefaults.fallbackPaintSize
     @AppStorage(ToolDefaults.Key.paintHardness) private var paintHardness = ToolDefaults.fallbackPaintHardness
     @AppStorage(ToolDefaults.Key.paintOpacity) private var paintOpacity = ToolDefaults.fallbackPaintOpacity
+    @AppStorage(ToolDefaults.Key.sceneSpacing) private var sceneSpacing = ToolDefaults.fallbackSceneSpacing
 
     var body: some View {
         Form {
@@ -338,6 +339,11 @@ struct ToolSettingsView: View {
                     slider($booleanResolution, 64...256, step: 16, label: "\(Int(booleanResolution)) voxels")
                 }
             }
+            Section("Scenes") {
+                LabeledContent("Spacing for new objects") {
+                    slider($sceneSpacing, 1.5...6, step: 0.25, label: String(format: "%.2f units", sceneSpacing))
+                }
+            }
             Section("Brushes") {
                 LabeledContent("Sculpt size") { slider($sculptSize, 0.02...0.4, step: 0.01, label: String(format: "%.0f%%", sculptSize * 100)) }
                 LabeledContent("Sculpt strength") { slider($sculptStrength, 0.05...1, step: 0.05, label: String(format: "%.0f%%", sculptStrength * 100)) }
@@ -367,7 +373,7 @@ struct ToolSettingsView: View {
         keepPositive = true; lodLevels = ToolDefaults.fallbackLODLevels
         sculptSize = ToolDefaults.fallbackSculptSize; sculptStrength = ToolDefaults.fallbackSculptStrength
         paintSize = ToolDefaults.fallbackPaintSize; paintHardness = ToolDefaults.fallbackPaintHardness
-        paintOpacity = ToolDefaults.fallbackPaintOpacity
+        paintOpacity = ToolDefaults.fallbackPaintOpacity; sceneSpacing = ToolDefaults.fallbackSceneSpacing
     }
 }
 

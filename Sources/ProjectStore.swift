@@ -118,7 +118,13 @@ final class ProjectStore {
     /// plain shape mesh otherwise.
     func currentViewerContent(for project: Project) -> ViewerContent? {
         guard let gen = project.currentGeneration else { return nil }
-        let dir = folder(for: project.id)
+        return viewerContent(for: gen, in: project.id)
+    }
+
+    /// Viewer content for any saved version of a project: textured/PBR for a paint version,
+    /// the plain shape mesh otherwise.
+    func viewerContent(for gen: Generation, in projectID: Project.ID) -> ViewerContent? {
+        let dir = folder(for: projectID)
         let mesh = dir.appendingPathComponent(gen.meshFileName)
         guard FileManager.default.fileExists(atPath: mesh.path) else { return nil }
         if gen.kind == .paint, let texName = gen.paintedTextureFileName {
@@ -136,6 +142,77 @@ final class ProjectStore {
             }
         }
         return .mesh(mesh)
+    }
+
+    // MARK: - composed scenes
+
+    /// The untextured geometry (`.mesh`) behind any version of any project: for a paint
+    /// version, the shape it textured.
+    func shapeMeshURL(for gen: Generation, in projectID: Project.ID) -> URL? {
+        guard let p = project(projectID) else { return nil }
+        let shape = gen.kind == .shape ? gen : p.generations.first { $0.id == gen.sourceShapeID }
+        guard let shape else { return nil }
+        let url = folder(for: projectID).appendingPathComponent(shape.meshFileName)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    func addSceneItem(generation: Generation, from sourceProject: Project.ID, to id: Project.ID, spacing: Double) {
+        guard let i = projects.firstIndex(where: { $0.id == id }) else { return }
+        var item = SceneItem(projectID: sourceProject, generationID: generation.id)
+        item.x = SceneComposition.nextSlotX(existing: projects[i].sceneItems, spacing: spacing)
+        projects[i].sceneItems.append(item)
+        save()
+    }
+
+    func updateSceneItem(_ item: SceneItem, for id: Project.ID) {
+        guard let i = projects.firstIndex(where: { $0.id == id }),
+              let k = projects[i].sceneItems.firstIndex(where: { $0.id == item.id }) else { return }
+        projects[i].sceneItems[k] = item
+        save()
+    }
+
+    func removeSceneItem(_ itemID: UUID, for id: Project.ID) {
+        guard let i = projects.firstIndex(where: { $0.id == id }) else { return }
+        projects[i].sceneItems.removeAll { $0.id == itemID }
+        save()
+    }
+
+    /// Merges every placed object's geometry into one shape and saves it as a new version
+    /// (untextured: paint it afterwards to texture the whole scene at once).
+    func saveSceneAsVersion(for id: Project.ID) async -> String? {
+        guard let project = project(id), let cur = project.currentGeneration else { return "Generate a shape first." }
+        let items = project.sceneItems
+        guard items.count >= 1 else { return "Add at least one object." }
+        var sources: [(URL, SceneItem)] = []
+        for item in items {
+            guard let owner = self.project(item.projectID), let gen = owner.generations.first(where: { $0.id == item.generationID }),
+                  let url = shapeMeshURL(for: gen, in: item.projectID) else {
+                return "An object in the scene is no longer available."
+            }
+            sources.append((url, item))
+        }
+        let baseID = cur.kind == .shape ? cur.id : cur.sourceShapeID
+        guard let base = project.generations.first(where: { $0.id == baseID }) else { return "The source shape is missing." }
+        let newID = UUID()
+        let dst = folder(for: id).appendingPathComponent("gen_\(newID.uuidString).mesh")
+        let failure = await Task.detached(priority: .userInitiated) { () -> String? in
+            var parts: [(positions: [SIMD3<Float>], faces: [SIMD3<UInt32>], item: SceneItem)] = []
+            for (url, item) in sources {
+                guard let raw = try? Data(contentsOf: url), let m = MeshDecimator.parse(raw), !m.faces.isEmpty else {
+                    return "An object's mesh couldn't be read."
+                }
+                parts.append((m.positions, m.faces, item))
+            }
+            let merged = SceneComposition.merge(parts)
+            let data = MeshDecimator.serialize(positions: merged.positions, faces: merged.faces)
+            return (try? data.write(to: dst, options: .atomic)) == nil ? "Couldn't save the scene." : nil
+        }.value
+        if let failure { return failure }
+        guard let i = projects.firstIndex(where: { $0.id == id }) else {
+            try? FileManager.default.removeItem(at: dst); return "The project no longer exists."
+        }
+        appendEditedShape(from: base, id: newID, mesh: dst, summary: "scene of \(items.count) object\(items.count == 1 ? "" : "s")", at: i)
+        return nil
     }
 
     func selectGeneration(_ genID: UUID, for id: Project.ID) {

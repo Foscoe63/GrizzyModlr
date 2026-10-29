@@ -18,6 +18,7 @@ enum ToolDefaults {
         static let paintSize = "tools.paintSize"
         static let paintHardness = "tools.paintHardness"
         static let paintOpacity = "tools.paintOpacity"
+        static let sceneSpacing = "tools.sceneSpacing"
     }
 
     static let fallbackDecimateK = 50.0
@@ -32,6 +33,7 @@ enum ToolDefaults {
     static let fallbackPaintSize = 0.05
     static let fallbackPaintHardness = 0.6
     static let fallbackPaintOpacity = 1.0
+    static let fallbackSceneSpacing = 2.5
 
     private static func double(_ key: String, _ fallback: Double, _ d: UserDefaults) -> Double {
         d.object(forKey: key) as? Double ?? fallback
@@ -47,6 +49,7 @@ enum ToolDefaults {
     static func paintSize(_ d: UserDefaults = .standard) -> Double { double(Key.paintSize, fallbackPaintSize, d) }
     static func paintHardness(_ d: UserDefaults = .standard) -> Double { double(Key.paintHardness, fallbackPaintHardness, d) }
     static func paintOpacity(_ d: UserDefaults = .standard) -> Double { double(Key.paintOpacity, fallbackPaintOpacity, d) }
+    static func sceneSpacing(_ d: UserDefaults = .standard) -> Double { double(Key.sceneSpacing, fallbackSceneSpacing, d) }
 
     static func symmetryAxis(_ d: UserDefaults = .standard) -> SymmetryAxis {
         SymmetryAxis(rawValue: d.string(forKey: Key.symmetryAxis) ?? fallbackSymmetryAxis) ?? .x
