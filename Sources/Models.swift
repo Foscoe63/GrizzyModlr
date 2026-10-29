@@ -243,6 +243,13 @@ struct PaintSettings {
     let seed: UInt64?
 }
 
+/// A reference view beyond the main (front) image, used by the multi-view model.
+enum ReferenceView: String, Codable, CaseIterable, Identifiable {
+    case left, back, right
+    var id: String { rawValue }
+    var label: String { rawValue.capitalized }
+}
+
 /// Whether a saved version is an untextured shape or a textured paint result.
 enum GenerationKind: String, Codable { case shape, paint }
 
@@ -275,11 +282,20 @@ struct Project: Identifiable, Codable, Hashable {
     var paintSuperresRaw: Bool?
     var paintFacesRaw: Int?
     var paintSeedRaw: UInt64?
+    /// Extra reference views (view name → file in the project folder). The main image is
+    /// always the front view; with any extra view the multi-view model is used.
+    var extraViewsRaw: [String: String]?
 
     init(id: UUID = UUID(), name: String, createdAt: Date = Date()) {
         self.id = id
         self.name = name
         self.createdAt = createdAt
+    }
+
+    var extraViews: [ReferenceView: String] {
+        (extraViewsRaw ?? [:]).reduce(into: [:]) { acc, kv in
+            if let v = ReferenceView(rawValue: kv.key) { acc[v] = kv.value }
+        }
     }
 
     var removeBackground: Bool {
@@ -430,6 +446,7 @@ struct Generation: Identifiable, Codable, Hashable {
     var paintSeedRaw: UInt64? = nil     // the seed this paint run actually used
     var editSummary: String? = nil      // for a mesh-edit version: what was done (e.g. "smoothed ×3")
     var editedFromID: UUID? = nil       // the version this edit was derived from
+    var extraViewFiles: [String: String]? = nil  // multi-view run: view name → snapshot file
 
     var kind: GenerationKind { GenerationKind(rawValue: kindRaw ?? "shape") ?? .shape }
     var isPainted: Bool { kind == .paint }

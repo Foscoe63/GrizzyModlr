@@ -67,6 +67,12 @@ enum ModelStore {
         return installDir(for: model.modelID).appendingPathComponent("model.fp16.safetensors")
     }
 
+    /// The multi-view (2mv) checkpoint; nil unless fully installed.
+    static func multiViewWeightsFile() -> URL? {
+        guard isInstalled(.shapeMultiView) else { return nil }
+        return installDir(for: .shapeMultiView).appendingPathComponent("model.fp16.safetensors")
+    }
+
     /// The weights root handed to the vendored `PaintPipeline`. The pipeline
     /// hardcodes repo-era subpaths (`hunyuan3d-paint-v2-0/…`, `dinov2-giant/…`)
     /// that differ from the §2.3 on-disk layout, and Packages/ must not change —

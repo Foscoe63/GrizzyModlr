@@ -38,7 +38,8 @@ final class ShapeEngine {
     /// Mirrors the old `GenerationService.run` contract: callbacks may arrive on a
     /// background queue; the caller hops to the main actor.
     @discardableResult
-    func generate(imageURL: URL, output: URL, weightsURL: URL, quantize: Int,
+    func generate(imageURL: URL, extraViews: [(angle: ViewAngle, url: URL)] = [],
+                  output: URL, weightsURL: URL, quantize: Int,
                   steps: Int, guidance: Float, resolution: Int, seed: UInt64,
                   onProgress: @escaping (String, String?, Double?) -> Void,
                   onPreview: @escaping (URL) -> Void,
@@ -73,16 +74,36 @@ final class ShapeEngine {
 
             let dir = output.deletingLastPathComponent()
             var previewIdx = 0
-            let mesh = gen.generate(image: cg, steps: steps, guidance: guidance, seed: seed,
+            let previewHandler: (Mesh) -> Void = { m in
+                let u = dir.appendingPathComponent("preview_\(previewIdx).mesh")
+                previewIdx += 1
+                try? ShapeMeshWriter.writeMesh(m, to: u)
+                onPreview(u)
+            }
+            let progressHandler: (ShapeGenerator.Progress) -> Void = { p in
+                onProgress(p.stage, nil, Double(p.fraction))
+            }
+            let mesh: Mesh?
+            if extraViews.isEmpty {
+                mesh = gen.generate(image: cg, steps: steps, guidance: guidance, seed: seed,
                                     resolution: resolution, octree: true,
                                     isCancelled: { run.cancelled },
-                                    onPreview: { m in
-                                        let u = dir.appendingPathComponent("preview_\(previewIdx).mesh")
-                                        previewIdx += 1
-                                        try? ShapeMeshWriter.writeMesh(m, to: u)
-                                        onPreview(u)
-                                    }) { p in
-                onProgress(p.stage, nil, Double(p.fraction))
+                                    onPreview: previewHandler, onProgress: progressHandler)
+            } else {
+                guard gen.isMultiView else {
+                    onFinish(.failure("These weights don't support multiple views.")); return
+                }
+                var views: [(angle: ViewAngle, image: CGImage)] = [(.front, cg)]
+                for extra in extraViews {
+                    guard let img = Self.loadCGImage(extra.url) else {
+                        onFinish(.failure("Couldn't read a reference view.")); return
+                    }
+                    views.append((extra.angle, img))
+                }
+                mesh = gen.generate(views: views, steps: steps, guidance: guidance, seed: seed,
+                                    resolution: resolution, octree: true,
+                                    isCancelled: { run.cancelled },
+                                    onPreview: previewHandler, onProgress: progressHandler)
             }
 
             if run.cancelled { onFinish(.failure("Cancelled")); return }

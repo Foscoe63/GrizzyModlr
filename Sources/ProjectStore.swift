@@ -154,7 +154,7 @@ final class ProjectStore {
         func fileNames(_ gen: Generation) -> [String] {
             [gen.meshFileName, gen.inputFileName, gen.sourceFileName, gen.maskFileName,
              gen.paintedMeshFileName, gen.paintedTextureFileName, gen.paintedMRFileName]
-                .compactMap { $0 }.filter { !$0.isEmpty }
+                .compactMap { $0 }.filter { !$0.isEmpty } + Array((gen.extraViewFiles ?? [:]).values)
         }
         // Paint versions share their input/source/mask snapshots with the shape they
         // textured — never delete a file a surviving generation still references.
@@ -204,6 +204,18 @@ final class ProjectStore {
         } else {
             projects[i].inputImageName = nil   // snapshot missing → no working input
         }
+        // Restore the multi-view reference set the version was generated with.
+        for v in ReferenceView.allCases {
+            let dest = dir.appendingPathComponent("view_\(v.rawValue).png")
+            try? fm.removeItem(at: dest)
+            if let snapName = gen.extraViewFiles?[v.rawValue],
+               (try? fm.copyItem(at: dir.appendingPathComponent(snapName), to: dest)) != nil {
+                projects[i].extraViewsRaw = (projects[i].extraViewsRaw ?? [:]).merging([v.rawValue: dest.lastPathComponent]) { $1 }
+            } else {
+                projects[i].extraViewsRaw?[v.rawValue] = nil
+            }
+        }
+        if projects[i].extraViewsRaw?.isEmpty == true { projects[i].extraViewsRaw = nil }
         inputVersions[id, default: 0] += 1
         save()
     }
@@ -449,6 +461,56 @@ final class ProjectStore {
         return (original, mask)
     }
 
+    // MARK: - reference views (multi-view input)
+
+    func extraViewURL(_ view: ReferenceView, for project: Project) -> URL? {
+        guard let name = project.extraViewsRaw?[view.rawValue] else { return nil }
+        let url = folder(for: project.id).appendingPathComponent(name)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    /// Adds (or replaces) a reference view. The subject is cut out with the Vision mask
+    /// when the image has none, since the model recenters on the alpha silhouette.
+    func setExtraView(_ view: ReferenceView, fromURL src: URL, for id: Project.ID) {
+        guard let i = projects.firstIndex(where: { $0.id == id }),
+              let original = BackgroundRemover.loadCGImage(src) else {
+            importErrors[id] = "Couldn't read that image."
+            return
+        }
+        var png: Data?
+        if let mask = BackgroundRemover.visionMask(for: original) {
+            png = BackgroundRemover.cutoutPNG(original: original, mask: mask)
+        }
+        if png == nil { png = BackgroundRemover.pngData(original) }
+        guard let data = png else { importErrors[id] = "Couldn't process that image."; return }
+        let name = "view_\(view.rawValue).png"
+        do { try data.write(to: folder(for: id).appendingPathComponent(name), options: .atomic) }
+        catch { importErrors[id] = "Couldn't save that image."; return }
+        var views = projects[i].extraViewsRaw ?? [:]
+        views[view.rawValue] = name
+        projects[i].extraViewsRaw = views
+        inputVersions[id, default: 0] += 1
+        save()
+    }
+
+    func setExtraView(_ view: ReferenceView, image: NSImage, for id: Project.ID) {
+        guard let png = image.pngData() else { return }
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("rv-\(UUID().uuidString).png")
+        guard (try? png.write(to: tmp)) != nil else { return }
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        setExtraView(view, fromURL: tmp, for: id)
+    }
+
+    func removeExtraView(_ view: ReferenceView, for id: Project.ID) {
+        guard let i = projects.firstIndex(where: { $0.id == id }),
+              let name = projects[i].extraViewsRaw?[view.rawValue] else { return }
+        try? FileManager.default.removeItem(at: folder(for: id).appendingPathComponent(name))
+        projects[i].extraViewsRaw?[view.rawValue] = nil
+        if projects[i].extraViewsRaw?.isEmpty == true { projects[i].extraViewsRaw = nil }
+        inputVersions[id, default: 0] += 1
+        save()
+    }
+
     // MARK: - shape run staging (files for one run; committed or discarded by the runtime)
 
     struct StagedShapeRun {
@@ -463,6 +525,8 @@ final class ProjectStore {
         let seed: UInt64
         let removeBackground: Bool
         let startedAt: Date
+        /// Snapshots of the extra reference views for a multi-view run (empty = single image).
+        var extraViews: [ReferenceView: URL] = [:]
     }
 
     enum StagingError: LocalizedError {
@@ -518,11 +582,33 @@ final class ProjectStore {
             if (try? FileManager.default.copyItem(at: maskFile, to: snap)) != nil { genMask = snap }
         }
 
+        // Multi-view: snapshot each reference view so this version stays reproducible.
+        var views: [ReferenceView: URL] = [:]
+        for v in ReferenceView.allCases {
+            guard let src = extraViewURL(v, for: project) else { continue }
+            let snap = dir.appendingPathComponent("gen_\(genID.uuidString)_view_\(v.rawValue).png")
+            guard (try? FileManager.default.copyItem(at: src, to: snap)) != nil else {
+                for u in views.values { try? FileManager.default.removeItem(at: u) }
+                throw StagingError.snapshotFailed("the \(v.label.lowercased()) view")
+            }
+            views[v] = snap
+        }
+        // The 2mv checkpoint is a full-step (non-distilled) model: use the Small ladder's
+        // step count, never the turbo schedule of a Large selection.
+        var runSettings = settings
+        if !views.isEmpty {
+            runSettings = RunSettings(model: .small, quant: settings.quant,
+                                      steps: project.advancedMode ? settings.steps : project.quality.steps(for: .small),
+                                      guidance: settings.guidance, octree: settings.octree, seed: settings.seed)
+        }
+
         clearStreamFiles(for: id)
-        return StagedShapeRun(project: id, genID: genID, mesh: output, input: genInput,
-                              source: genSource, mask: genMask, settings: settings,
-                              seed: settings.seed ?? UInt64.random(in: 0..<UInt64(UInt32.max)),
-                              removeBackground: project.removeBackground, startedAt: Date())
+        var staged = StagedShapeRun(project: id, genID: genID, mesh: output, input: genInput,
+                                    source: genSource, mask: genMask, settings: runSettings,
+                                    seed: runSettings.seed ?? UInt64.random(in: 0..<UInt64(UInt32.max)),
+                                    removeBackground: project.removeBackground, startedAt: Date())
+        staged.extraViews = views
+        return staged
     }
 
     /// Turn a finished run into a saved generation, selected for viewing.
@@ -548,7 +634,9 @@ final class ProjectStore {
                              guidanceRaw: s.guidance, octreeRaw: s.octree,
                              seedRaw: staged.seed,
                              sourceFileName: staged.source?.lastPathComponent,
-                             maskFileName: staged.mask?.lastPathComponent)
+                             maskFileName: staged.mask?.lastPathComponent,
+                             extraViewFiles: staged.extraViews.isEmpty ? nil
+                                 : Dictionary(uniqueKeysWithValues: staged.extraViews.map { ($0.key.rawValue, $0.value.lastPathComponent) }))
         projects[i].generations.append(gen)
         projects[i].selectedGenerationID = gen.id
         projects[i].outputMeshName = nil
@@ -696,7 +784,7 @@ final class ProjectStore {
 
     /// Drop a staged run's files (cancelled / failed) so they don't accumulate.
     func discardShapeRun(_ staged: StagedShapeRun) {
-        for url in [staged.mesh, staged.input, staged.source, staged.mask].compactMap({ $0 }) {
+        for url in [staged.mesh, staged.input, staged.source, staged.mask].compactMap({ $0 }) + Array(staged.extraViews.values) {
             try? FileManager.default.removeItem(at: url)
         }
         clearStreamFiles(for: staged.project)
@@ -919,7 +1007,7 @@ final class ProjectStore {
             for gen in project.generations {
                 for name in [gen.meshFileName, gen.inputFileName, gen.sourceFileName, gen.maskFileName,
                              gen.paintedMeshFileName, gen.paintedTextureFileName, gen.paintedMRFileName]
-                    .compactMap({ $0 }).filter({ !$0.isEmpty }) {
+                    .compactMap({ $0 }).filter({ !$0.isEmpty }) + Array((gen.extraViewFiles ?? [:]).values) {
                     referenced.insert(name)
                 }
             }

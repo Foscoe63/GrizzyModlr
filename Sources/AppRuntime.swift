@@ -1,3 +1,4 @@
+import Hy3DMLX
 import Foundation
 import Observation
 
@@ -119,7 +120,8 @@ final class AppRuntime {
 
     func requestGenerate(_ id: Project.ID) {
         guard let project = store.project(id) else { return }
-        dispatch(.shapeGenerateRequested(project: id, model: project.resolvedSettings.model.modelID))
+        let model: ModelID = project.extraViews.isEmpty ? project.resolvedSettings.model.modelID : .shapeMultiView
+        dispatch(.shapeGenerateRequested(project: id, model: model))
     }
 
     func requestPaint(_ id: Project.ID) {
@@ -327,15 +329,23 @@ final class AppRuntime {
                                           result: .failure("The run's staged files were lost.")))
             return
         }
-        guard let weights = ModelStore.shapeWeightsFile(for: staged.settings.model) else {
+        let multiView = !staged.extraViews.isEmpty
+        guard let weights = multiView ? ModelStore.multiViewWeightsFile()
+                                      : ModelStore.shapeWeightsFile(for: staged.settings.model) else {
+            let name = multiView ? "Multi-view" : staged.settings.model.label
             dispatch(.shapeEngineFinished(project: project, token: token,
-                                          result: .failure("\(staged.settings.model.label) weights are no longer installed.")))
+                                          result: .failure("\(name) weights are no longer installed.")))
             return
+        }
+        let angles: [ReferenceView: ViewAngle] = [.left: .left, .back: .back, .right: .right]
+        let extraViews = ReferenceView.allCases.compactMap { v in
+            staged.extraViews[v].flatMap { url in angles[v].map { (angle: $0, url: url) } }
         }
         let bridge = bridge
         var run: ShapeEngine.Run!
         run = shapeEngine.generate(
             imageURL: staged.input,
+            extraViews: extraViews,
             output: staged.mesh,
             weightsURL: weights,
             quantize: staged.settings.quant.flag,

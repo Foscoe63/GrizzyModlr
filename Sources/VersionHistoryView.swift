@@ -114,6 +114,7 @@ struct VersionHistoryView: View {
             return "Textured · \(gen.paintStepsRaw ?? 0) steps · \(gen.paintResRaw ?? 0)px"
         }
         if let edit = gen.editSummary { return "Edited · \(edit)" }
+        if let n = gen.extraViewFiles?.count, n > 0 { return "\(n + 1) views · \(gen.steps) steps" }
         return gen.quantization == .full
             ? "\(gen.steps) steps"
             : "\(gen.quantization.label) · \(gen.steps) steps"

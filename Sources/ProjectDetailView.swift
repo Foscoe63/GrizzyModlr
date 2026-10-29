@@ -108,6 +108,15 @@ struct ProjectDetailView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
+            if store.imageURL(for: project) != nil, !shapeJob.isRunning {
+                VStack {
+                    Spacer()
+                    ReferenceViewsStrip(projectID: project.id, reloadKey: store.inputVersion(project.id))
+                        .environment(store)
+                }
+                .padding(.bottom, store.importErrors[project.id] == nil ? 14 : 70)
+                .frame(maxWidth: .infinity, alignment: .center)
+            }
             if let importError = store.importErrors[project.id] {
                 VStack {
                     Spacer()

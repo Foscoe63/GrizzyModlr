@@ -1,11 +1,13 @@
 import Foundation
 
-/// The four installable models (DESIGN.md §2).
+/// The installable models (DESIGN.md §2): four core slots plus the optional multi-view shape model.
 enum ModelID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case shapeSmall = "shape-small"
     case shapeLarge = "shape-large"
     case paintSmall = "paint-small"
     case paintLarge = "paint-large"
+    /// Hunyuan3D-2mv: optional, used automatically when a project has 2+ reference views.
+    case shapeMultiView = "shape-multiview"
 
     var id: String { rawValue }
 
@@ -14,7 +16,7 @@ enum ModelID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
 
     var kind: EngineKind {
         switch self {
-        case .shapeSmall, .shapeLarge: return .shape
+        case .shapeSmall, .shapeLarge, .shapeMultiView: return .shape
         case .paintSmall, .paintLarge: return .paint
         }
     }
@@ -26,6 +28,8 @@ struct CatalogFile: Hashable, Sendable {
     let path: String
     let bytes: Int64
     let sha256: String
+    /// Path in the HF repo when it differs from the local install path (nil = same).
+    var remotePath: String? = nil
 }
 
 struct CatalogModel: Sendable {
@@ -43,7 +47,7 @@ struct CatalogModel: Sendable {
     /// Resolve the download URL for one file.
     func remoteURL(for file: CatalogFile) -> URL {
         let rev = revision ?? "main"
-        return URL(string: "https://huggingface.co/\(repo)/resolve/\(rev)/\(file.path)?download=true")!
+        return URL(string: "https://huggingface.co/\(repo)/resolve/\(rev)/\(file.remotePath ?? file.path)?download=true")!
     }
 }
 
@@ -127,6 +131,20 @@ enum ModelCatalog {
                 CatalogFile(path: "vae/diffusion_pytorch_model.safetensors", bytes: 167_335_310,
                             sha256: "abcec86e499e1ce9f05d1630725d386dc533b61fe0947ab034f07f89042e7a61"),
             ]),
+        CatalogModel(
+            id: .shapeMultiView,
+            displayName: "Shape · Multi-view",
+            detail: "Hunyuan3D 2mv · 1.1B · front, left, back, right reference views",
+            repo: "tencent/Hunyuan3D-2mv",
+            revision: "3a761b539b29fe4ff64714813aa9560fd66f5de0",
+            files: [
+                CatalogFile(path: "config.yaml", bytes: 1_608,
+                            sha256: "315fd5bf601d1d103130b9fda202f1bd28eda495e68ed1621bc823d5519c5e5b",
+                            remotePath: "hunyuan3d-dit-v2-mv/config.yaml"),
+                CatalogFile(path: "model.fp16.safetensors", bytes: 4_928_151_562,
+                            sha256: "d36f5881bcdc56726b73e517cd444c13c60732431622da7268145355c8d38e9c",
+                            remotePath: "hunyuan3d-dit-v2-mv/model.fp16.safetensors"),
+            ]),
     ]
 
     static func model(_ id: ModelID) -> CatalogModel {
@@ -139,8 +157,9 @@ enum ModelCatalog {
     static let fastStart: Set<ModelID> = [.shapeSmall, .paintSmall]
     /// Best quality: large pair (~13.6 GB).
     static let bestQuality: Set<ModelID> = [.shapeLarge, .paintLarge]
-    /// Everything (~21.3 GB).
-    static let everything: Set<ModelID> = Set(ModelID.allCases)
+    /// Everything in the core set (~21.3 GB). The optional multi-view model is installed
+    /// on demand from model management, not offered during onboarding.
+    static let everything: Set<ModelID> = [.shapeSmall, .shapeLarge, .paintSmall, .paintLarge]
 
     static func totalBytes(of models: Set<ModelID>) -> Int64 {
         models.reduce(0) { $0 + model($1).totalBytes }
