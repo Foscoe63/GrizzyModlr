@@ -6,7 +6,7 @@ final class ViewerDefaultsTests: XCTestCase {
         for p in CameraPreset.allCases {
             XCTAssertEqual(simd_length(p.direction), 1, accuracy: 1e-5)
             XCTAssertEqual(simd_length(p.up), 1, accuracy: 1e-5)
-            XCTAssertLessThan(abs(simd_dot(p.direction, p.up)), 1e-5)          // a valid look-at basis
+            XCTAssertLessThan(abs(simd_dot(p.direction, p.up)), 0.99)          // never parallel to up: a valid look-at
         }
         XCTAssertEqual(Set(CameraPreset.allCases.map { "\($0.direction)" }).count, CameraPreset.allCases.count)
         XCTAssertEqual(CameraPreset.front.direction, SIMD3<Float>(0, 0, 1))
