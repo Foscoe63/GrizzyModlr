@@ -1,4 +1,5 @@
 import Foundation
+import simd
 import Observation
 import AppKit
 
@@ -686,6 +687,75 @@ final class ProjectStore {
         projects[i].generations.append(gen)
         projects[i].selectedGenerationID = newID
         save()
+    }
+
+    /// What to combine the selected shape with.
+    enum BooleanOperandSpec {
+        /// A primitive placed relative to the shape: `offset` and `size` are fractions of its
+        /// bounding radius, so it scales with any model.
+        case primitive(BooleanPrimitive, offset: SIMD3<Float>, size: Float)
+        /// Another shape version of the same project.
+        case version(UUID)
+    }
+
+    /// Combines the selected shape with an operand (union / subtract / intersect) and saves
+    /// the result as a new shape version. Returns an error message, or nil on success.
+    func applyBoolean(_ op: BooleanOp, with spec: BooleanOperandSpec, resolution: Int,
+                      for id: Project.ID) async -> String? {
+        guard let project = project(id), let cur = project.currentGeneration else {
+            return "There's no shape to edit."
+        }
+        let baseID = cur.kind == .shape ? cur.id : cur.sourceShapeID
+        guard let base = project.generations.first(where: { $0.id == baseID }) else {
+            return "The source shape for this version is missing."
+        }
+        let dir = folder(for: id)
+        let srcURL = dir.appendingPathComponent(base.meshFileName)
+        var otherURL: URL?
+        if case .version(let gid) = spec {
+            guard let other = project.generations.first(where: { $0.id == gid && $0.kind == .shape }) else {
+                return "That version is no longer available."
+            }
+            otherURL = dir.appendingPathComponent(other.meshFileName)
+        }
+        let newID = UUID()
+        let dst = dir.appendingPathComponent("gen_\(newID.uuidString).mesh")
+        let outcome = await Task.detached(priority: .userInitiated) { () -> String? in
+            guard let raw = try? Data(contentsOf: srcURL), let a = MeshDecimator.parse(raw), !a.faces.isEmpty else {
+                return "The shape mesh couldn't be read."
+            }
+            let operand: MeshBoolean.Operand
+            switch spec {
+            case .primitive(let shape, let offset, let size):
+                var lo = SIMD3<Float>(repeating: .infinity), hi = SIMD3<Float>(repeating: -.infinity)
+                for p in a.positions { lo = simd_min(lo, p); hi = simd_max(hi, p) }
+                let radius = max(simd_length(hi - lo) / 2, 1e-4)
+                operand = .init(kind: .primitive(shape, center: (lo + hi) / 2 + offset * radius, size: size * radius))
+            case .version:
+                guard let url = otherURL, let rawB = try? Data(contentsOf: url),
+                      let b = MeshDecimator.parse(rawB), !b.faces.isEmpty else {
+                    return "The other version's mesh couldn't be read."
+                }
+                operand = .init(kind: .mesh(positions: b.positions, faces: b.faces))
+            }
+            guard let r = MeshBoolean.apply(op, a: (a.positions, a.faces), b: operand, resolution: resolution) else {
+                return op == .intersect ? "The shapes don't overlap." : "The result would be empty."
+            }
+            let data = MeshDecimator.serialize(positions: r.positions, faces: r.faces)
+            return (try? data.write(to: dst, options: .atomic)) == nil ? "Couldn't save the combined mesh." : nil
+        }.value
+        if let outcome { return outcome }
+        guard let i = projects.firstIndex(where: { $0.id == id }) else {
+            try? FileManager.default.removeItem(at: dst)
+            return "The project no longer exists."
+        }
+        let what: String
+        switch spec {
+        case .primitive(let shape, _, _): what = shape.rawValue
+        case .version: what = "another version"
+        }
+        appendEditedShape(from: base, id: newID, mesh: dst, summary: "\(op.rawValue) \(what)", at: i)
+        return nil
     }
 
     /// Loads the selected shape (for a paint version, the shape it textured) for
