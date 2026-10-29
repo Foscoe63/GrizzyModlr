@@ -38,6 +38,8 @@ final class AppRuntime {
         case failed(String)
     }
     private(set) var viewSynth: [Project.ID: ViewSynthState] = [:]
+    /// Text → image progress per project (same shape as view synthesis).
+    private(set) var textToImage: [Project.ID: ViewSynthState] = [:]
 
     /// Moving the models folder to another drive (copy → verify → switch → delete old copy).
     enum RelocationState: Equatable {
@@ -53,6 +55,8 @@ final class AppRuntime {
     @ObservationIgnored private let paintEngine = PaintEngine()
     @ObservationIgnored private let viewSynthEngine = ViewSynthEngine()
     @ObservationIgnored private var viewSynthRuns: [Project.ID: ViewSynthEngine.Run] = [:]
+    @ObservationIgnored private let textToImageEngine = TextToImageEngine()
+    @ObservationIgnored private var textToImageRuns: [Project.ID: TextToImageEngine.Run] = [:]
     @ObservationIgnored private let arbiter: EngineArbiter
     @ObservationIgnored private var downloads: DownloadManager!
     @ObservationIgnored private let bridge = EventBridge()
@@ -154,6 +158,7 @@ final class AppRuntime {
         guard viewSynth[id] == nil, let project = store.project(id), let image = store.imageURL(for: project) else { return }
         guard let weights = ModelStore.viewSynthesisDir() else { showModelManager(); return }
         let busy = state.shape.values.contains { $0.state.isRunning } || state.paint.values.contains { $0.state.isRunning }
+            || textToImage.values.contains { if case .running = $0 { return true } else { return false } }
         guard !busy else {
             viewSynth[id] = .failed("Wait for the current generation to finish first.")
             return
@@ -185,6 +190,50 @@ final class AppRuntime {
         }
     }
 
+    /// Generates the project's starting image from a text prompt (Stable Diffusion 2.1), then
+    /// optionally removes the background and starts the 3D generation (Settings → Tools).
+    func generateImage(fromText text: String, for id: Project.ID) {
+        let prompt = ToolDefaults.composePrompt(text, suffix: ToolDefaults.ttiSuffix())
+        guard textToImage[id] == nil, !prompt.isEmpty, store.project(id) != nil else { return }
+        guard let weights = ModelStore.textToImageDir() else { showModelManager(); return }
+        let busy = state.shape.values.contains { $0.state.isRunning } || state.paint.values.contains { $0.state.isRunning }
+            || viewSynth.values.contains { if case .running = $0 { return true } else { return false } }
+        guard !busy else { textToImage[id] = .failed("Wait for the current generation to finish first."); return }
+        textToImage[id] = .running(0)
+        let output = FileManager.default.temporaryDirectory.appendingPathComponent("tti-\(UUID().uuidString).png")
+        let engine = textToImageEngine, shape = shapeEngine, paint = paintEngine
+        let negative = ToolDefaults.ttiNegative(), steps = ToolDefaults.ttiSteps(), guidance = Float(ToolDefaults.ttiGuidance())
+        let removeBackground = ToolDefaults.ttiRemoveBackground(), auto = ToolDefaults.ttiAutoGenerate()
+        Task { [weak self] in
+            await shape.evictAndWait()
+            await paint.evictAndWait()
+            guard let self else { return }
+            let run = engine.generate(
+                prompt: prompt, negative: negative, steps: steps, guidance: guidance,
+                seed: UInt64.random(in: 0 ..< UInt64(UInt32.max)), weightsDir: weights, output: output,
+                onProgress: { p in Task { @MainActor in
+                    if case .running = self.textToImage[id] { self.textToImage[id] = .running(p) }
+                } },
+                onFinish: { outcome in Task { @MainActor in
+                    self.textToImageRuns[id] = nil
+                    switch outcome {
+                    case .success:
+                        self.textToImage[id] = nil
+                        self.store.setImage(fromURL: output, for: id)
+                        try? FileManager.default.removeItem(at: output)
+                        if removeBackground { self.store.setRemoveBackground(true, for: id) }
+                        if auto { self.requestGenerate(id) }
+                    case .failure(let message):
+                        self.textToImage[id] = message == "Cancelled" ? nil : .failed(message)
+                    }
+                } })
+            self.textToImageRuns[id] = run
+        }
+    }
+
+    func cancelTextToImage(_ id: Project.ID) { textToImageRuns[id]?.cancel() }
+    func dismissTextToImageFailure(_ id: Project.ID) { if case .failed = textToImage[id] { textToImage[id] = nil } }
+
     func cancelViewSynthesis(_ id: Project.ID) { viewSynthRuns[id]?.cancel() }
     func dismissViewSynthFailure(_ id: Project.ID) { if case .failed = viewSynth[id] { viewSynth[id] = nil } }
 
@@ -197,6 +246,7 @@ final class AppRuntime {
             && !state.shape.values.contains { $0.state.isRunning }
             && !state.paint.values.contains { $0.state.isRunning }
             && viewSynth.values.allSatisfy { if case .running = $0 { return false } else { return true } }
+            && textToImage.values.allSatisfy { if case .running = $0 { return false } else { return true } }
     }
 
     /// Copies the library into `picked` (a "Modelr Models" folder is created inside it), then

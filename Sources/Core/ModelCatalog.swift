@@ -10,6 +10,8 @@ enum ModelID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case shapeMultiView = "shape-multiview"
     /// Zero123++ v1.2: optional, turns the main image into six candidate side views.
     case viewSynthesis = "view-synthesis"
+    /// Stable Diffusion 2.1 base: optional, turns a text prompt into the starting image.
+    case textToImage = "text-to-image"
 
     var id: String { rawValue }
 
@@ -19,7 +21,7 @@ enum ModelID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     var kind: EngineKind {
         switch self {
         case .shapeSmall, .shapeLarge, .shapeMultiView: return .shape
-        case .paintSmall, .paintLarge, .viewSynthesis: return .paint
+        case .paintSmall, .paintLarge, .viewSynthesis, .textToImage: return .paint
         }
     }
 }
@@ -162,6 +164,24 @@ enum ModelCatalog {
                             sha256: "3e4c08995484ee61270175e9e7a072b66a6e4eeb5f0c266667fe1f45b90daf9a"),
                 CatalogFile(path: "vision_encoder/model.safetensors", bytes: 1_264_217_240,
                             sha256: "ae616c24393dd1854372b0639e5541666f7521cbe219669255e865cb7f89466a"),
+            ]),
+        CatalogModel(
+            id: .textToImage,
+            displayName: "Text to image",
+            detail: "Stable Diffusion 2.1 base · 512² · makes the starting image for text-to-3D (OpenRAIL++ license)",
+            repo: "sd2-community/stable-diffusion-2-1-base",
+            revision: "4e63672c03103b6c636b8fb4119ba982469b2955",
+            files: [
+                CatalogFile(path: "text_encoder/model.fp16.safetensors", bytes: 680_821_096,
+                            sha256: "681c555376658c81dc273f2d737a2aeb23ddb6d1d8e5b3a7064636d359a22668"),
+                CatalogFile(path: "tokenizer/merges.txt", bytes: 524_619,
+                            sha256: "9fd691f7c8039210e0fced15865466c65820d09b63988b0174bfe25de299051a"),
+                CatalogFile(path: "tokenizer/vocab.json", bytes: 1_059_962,
+                            sha256: "e089ad92ba36837a0d31433e555c8f45fe601ab5c221d4f607ded32d9f7a4349"),
+                CatalogFile(path: "unet/diffusion_pytorch_model.fp16.safetensors", bytes: 1_731_904_736,
+                            sha256: "28ec9cf3b239c0751c201b1f6fb46b551df5862731b30a37aa1360101cb3fbab"),
+                CatalogFile(path: "vae/diffusion_pytorch_model.fp16.safetensors", bytes: 167_335_342,
+                            sha256: "3e4c08995484ee61270175e9e7a072b66a6e4eeb5f0c266667fe1f45b90daf9a"),
             ]),
     ]
 

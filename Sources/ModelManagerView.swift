@@ -299,6 +299,12 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.paintOpacity) private var paintOpacity = ToolDefaults.fallbackPaintOpacity
     @AppStorage(ToolDefaults.Key.sceneSpacing) private var sceneSpacing = ToolDefaults.fallbackSceneSpacing
     @AppStorage(ToolDefaults.Key.exportQuads) private var exportQuads = false
+    @AppStorage(ToolDefaults.Key.ttiSteps) private var ttiSteps = ToolDefaults.fallbackTTISteps
+    @AppStorage(ToolDefaults.Key.ttiGuidance) private var ttiGuidance = ToolDefaults.fallbackTTIGuidance
+    @AppStorage(ToolDefaults.Key.ttiNegative) private var ttiNegative = ToolDefaults.fallbackTTINegative
+    @AppStorage(ToolDefaults.Key.ttiSuffix) private var ttiSuffix = ToolDefaults.fallbackTTISuffix
+    @AppStorage(ToolDefaults.Key.ttiRemoveBackground) private var ttiRemoveBackground = true
+    @AppStorage(ToolDefaults.Key.ttiAutoGenerate) private var ttiAutoGenerate = false
 
     var body: some View {
         Form {
@@ -345,6 +351,16 @@ struct ToolSettingsView: View {
                     slider($sceneSpacing, 1.5...6, step: 0.25, label: String(format: "%.2f units", sceneSpacing))
                 }
             }
+            Section("Text to 3D") {
+                LabeledContent("Image steps") { slider($ttiSteps, 10...50, step: 1, label: "\(Int(ttiSteps)) steps") }
+                LabeledContent("Prompt strength") { slider($ttiGuidance, 3...14, step: 0.5, label: String(format: "%.1f", ttiGuidance)) }
+                TextField("Style added to every prompt", text: $ttiSuffix, axis: .vertical).lineLimit(1...3)
+                TextField("Negative prompt", text: $ttiNegative, axis: .vertical).lineLimit(1...3)
+                Toggle("Remove the background after generating", isOn: $ttiRemoveBackground)
+                Toggle("Start the 3D generation automatically", isOn: $ttiAutoGenerate)
+                Text("Describe an object in the image panel; Stable Diffusion 2.1 makes the starting image, then the shape model builds it.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Export") {
                 Toggle("OBJ as quads where triangles pair cleanly", isOn: $exportQuads)
                 Text("Merges adjacent triangles into quads (best on remeshed models). GLB, STL and PLY stay triangles.")
@@ -362,7 +378,7 @@ struct ToolSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(height: 560)
+        .frame(height: 640)
     }
 
     private func slider(_ value: Binding<Double>, _ range: ClosedRange<Double>, step: Double, label: String) -> some View {
@@ -381,6 +397,9 @@ struct ToolSettingsView: View {
         paintSize = ToolDefaults.fallbackPaintSize; paintHardness = ToolDefaults.fallbackPaintHardness
         paintOpacity = ToolDefaults.fallbackPaintOpacity; sceneSpacing = ToolDefaults.fallbackSceneSpacing
         exportQuads = false
+        ttiSteps = ToolDefaults.fallbackTTISteps; ttiGuidance = ToolDefaults.fallbackTTIGuidance
+        ttiNegative = ToolDefaults.fallbackTTINegative; ttiSuffix = ToolDefaults.fallbackTTISuffix
+        ttiRemoveBackground = true; ttiAutoGenerate = false
     }
 }
 

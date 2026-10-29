@@ -12,6 +12,7 @@ struct ReferenceViewsStrip: View {
     @State private var importing: ReferenceView?
     @State private var targeted: ReferenceView?
     @State private var showSynth = false
+    @State private var showTextPanel = false
 
     private var project: Project? { store.project(projectID) }
 
@@ -117,6 +118,13 @@ extension ReferenceViewsStrip {
                     Button { showSynth = true } label: { Label("Review", systemImage: "square.grid.3x2") }
                         .controlSize(.small)
                 }
+                Button { showTextPanel = true } label: { Label("From text", systemImage: "text.cursor") }
+                    .controlSize(.small)
+                    .help("Replace the main image with one generated from a description")
+                    .popover(isPresented: $showTextPanel) {
+                        TextToImagePanel(projectID: projectID, compact: true)
+                            .environment(runtime).padding(14).frame(width: 400)
+                    }
             }
         }
         .onChange(of: runtime.viewSynthRevision[projectID] ?? 0) { _, _ in showSynth = true }

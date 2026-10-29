@@ -20,6 +20,12 @@ enum ToolDefaults {
         static let paintOpacity = "tools.paintOpacity"
         static let sceneSpacing = "tools.sceneSpacing"
         static let exportQuads = "tools.exportQuads"
+        static let ttiSteps = "tools.ttiSteps"
+        static let ttiGuidance = "tools.ttiGuidance"
+        static let ttiNegative = "tools.ttiNegative"
+        static let ttiSuffix = "tools.ttiSuffix"
+        static let ttiRemoveBackground = "tools.ttiRemoveBackground"
+        static let ttiAutoGenerate = "tools.ttiAutoGenerate"
     }
 
     static let fallbackDecimateK = 50.0
@@ -35,6 +41,10 @@ enum ToolDefaults {
     static let fallbackPaintHardness = 0.6
     static let fallbackPaintOpacity = 1.0
     static let fallbackSceneSpacing = 2.5
+    static let fallbackTTISteps = 25.0
+    static let fallbackTTIGuidance = 7.5
+    static let fallbackTTINegative = "blurry, low quality, deformed, multiple objects, text, watermark, cropped"
+    static let fallbackTTISuffix = ", a single object, centered, plain light background, soft studio lighting, 3d render"
 
     private static func double(_ key: String, _ fallback: Double, _ d: UserDefaults) -> Double {
         d.object(forKey: key) as? Double ?? fallback
@@ -52,6 +62,18 @@ enum ToolDefaults {
     static func paintOpacity(_ d: UserDefaults = .standard) -> Double { double(Key.paintOpacity, fallbackPaintOpacity, d) }
     static func sceneSpacing(_ d: UserDefaults = .standard) -> Double { double(Key.sceneSpacing, fallbackSceneSpacing, d) }
     static func exportQuads(_ d: UserDefaults = .standard) -> Bool { d.bool(forKey: Key.exportQuads) }
+    static func ttiSteps(_ d: UserDefaults = .standard) -> Int { Int(double(Key.ttiSteps, fallbackTTISteps, d)) }
+    static func ttiGuidance(_ d: UserDefaults = .standard) -> Double { double(Key.ttiGuidance, fallbackTTIGuidance, d) }
+    static func ttiNegative(_ d: UserDefaults = .standard) -> String { d.string(forKey: Key.ttiNegative) ?? fallbackTTINegative }
+    static func ttiSuffix(_ d: UserDefaults = .standard) -> String { d.string(forKey: Key.ttiSuffix) ?? fallbackTTISuffix }
+    static func ttiRemoveBackground(_ d: UserDefaults = .standard) -> Bool { d.object(forKey: Key.ttiRemoveBackground) as? Bool ?? true }
+    static func ttiAutoGenerate(_ d: UserDefaults = .standard) -> Bool { d.bool(forKey: Key.ttiAutoGenerate) }
+
+    /// The full positive prompt: the user's text plus the configured style suffix.
+    static func composePrompt(_ text: String, suffix: String) -> String {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? "" : t + suffix
+    }
 
     static func symmetryAxis(_ d: UserDefaults = .standard) -> SymmetryAxis {
         SymmetryAxis(rawValue: d.string(forKey: Key.symmetryAxis) ?? fallbackSymmetryAxis) ?? .x

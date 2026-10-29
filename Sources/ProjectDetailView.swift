@@ -114,6 +114,14 @@ struct ProjectDetailView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
+            if store.imageURL(for: project) == nil {
+                VStack {
+                    Spacer()
+                    TextToImagePanel(projectID: project.id).environment(runtime)
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity)
+            }
             if store.imageURL(for: project) != nil, !shapeJob.isRunning {
                 VStack {
                     Spacer()

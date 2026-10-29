@@ -98,6 +98,11 @@ enum ModelStore {
         isInstalled(.viewSynthesis) ? installDir(for: .viewSynthesis) : nil
     }
 
+    /// Install directory of the Stable Diffusion text-to-image weights; nil unless fully installed.
+    static func textToImageDir() -> URL? {
+        isInstalled(.textToImage) ? installDir(for: .textToImage) : nil
+    }
+
     /// The multi-view (2mv) checkpoint; nil unless fully installed.
     static func multiViewWeightsFile() -> URL? {
         guard isInstalled(.shapeMultiView) else { return nil }
