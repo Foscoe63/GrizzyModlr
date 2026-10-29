@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 /// Environment:
 ///   MODELR_UI_SMOKE=1            enable
 ///   MODELR_SMOKE_OUT=<dir>       artifacts (screenshots + exported GLB); required
-///   MODELR_SMOKE_MODEL=small|large   shape+paint pair (default small)
+///   MODELR_SMOKE_MODEL=small|large|fast   shape+paint pair (default small; fast = TripoSR shape + small paint)
 ///   MODELR_SMOKE_IMAGE=<png>     demo image to import (required unless download mode)
 ///   MODELR_SMOKE_IMPORT=<root>   folder holding <root>/{shape-small,…} weight
 ///                                bundles; onboarding is completed by importing
@@ -73,10 +73,10 @@ enum SmokeRunner {
         }
 
         let modelChoice = env["MODELR_SMOKE_MODEL"] ?? "small"
-        guard modelChoice == "small" || modelChoice == "large" else {
-            throw fail("MODELR_SMOKE_MODEL must be small or large (got \(modelChoice))")
+        guard ["small", "large", "fast"].contains(modelChoice) else {
+            throw fail("MODELR_SMOKE_MODEL must be small, large or fast (got \(modelChoice))")
         }
-        let shapeModel: ShapeModel = modelChoice == "large" ? .large : .small
+        let shapeModel: ShapeModel = modelChoice == "large" ? .large : (modelChoice == "fast" ? .fast : .small)
         let paintModel: PaintModel = modelChoice == "large" ? .large : .small
         let needed = [shapeModel.modelID, paintModel.modelID]
 

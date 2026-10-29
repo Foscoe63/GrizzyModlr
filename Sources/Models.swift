@@ -3,7 +3,7 @@ import Foundation
 /// The shape checkpoint to generate with (DESIGN.md §2): Small = 2mini (0.6B,
 /// 30-step CFG), Large = 2.0-turbo (1.1B distilled, 8-step consistency).
 enum ShapeModel: String, CaseIterable, Identifiable {
-    case small, large
+    case small, large, fast
 
     var id: String { rawValue }
 
@@ -11,6 +11,7 @@ enum ShapeModel: String, CaseIterable, Identifiable {
         switch self {
         case .small: return "Small"
         case .large: return "Large"
+        case .fast: return "Fast"
         }
     }
 
@@ -18,6 +19,7 @@ enum ShapeModel: String, CaseIterable, Identifiable {
         switch self {
         case .small: return "2mini · 0.6B · fastest"
         case .large: return "2.0 turbo · 1.1B · best detail"
+        case .fast: return "TripoSR · seconds · lower detail"
         }
     }
 
@@ -25,6 +27,7 @@ enum ShapeModel: String, CaseIterable, Identifiable {
         switch self {
         case .small: return .shapeSmall
         case .large: return .shapeLarge
+        case .fast: return .triposr
         }
     }
 
@@ -33,6 +36,7 @@ enum ShapeModel: String, CaseIterable, Identifiable {
         switch self {
         case .small: return 30
         case .large: return 8
+        case .fast: return 1
         }
     }
 
@@ -42,6 +46,7 @@ enum ShapeModel: String, CaseIterable, Identifiable {
         switch legacyRaw {
         case "small", "mini", "miniTurbo": self = .small
         case "large", "standard", "standardTurbo": self = .large
+        case "fast": self = .fast
         default: self = .small
         }
     }
@@ -139,6 +144,7 @@ enum QualityPreset: String, CaseIterable, Identifiable {
         switch model {
         case .small: return [12, 20, 30, 40, 50][index]
         case .large: return [4, 6, 8, 10, 12][index]
+        case .fast: return [1, 1, 1, 1, 1][index]
         }
     }
 

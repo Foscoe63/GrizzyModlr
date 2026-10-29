@@ -74,6 +74,7 @@ targets:
       - Sources/MeshViewer.swift
       - Sources/SculptView.swift
       - Sources/ViewerStage.swift
+      - Packages/HunyuanPaintMLX/Sources/HunyuanPaintMLX/TorchCheckpoint.swift
       - Sources/TexturePaintController.swift
       - Sources/UVEditorView.swift
       - Sources/BackgroundRemover.swift

@@ -20,6 +20,9 @@ enum ToolDefaults {
         static let paintOpacity = "tools.paintOpacity"
         static let sceneSpacing = "tools.sceneSpacing"
         static let exportQuads = "tools.exportQuads"
+        static let tsrThreshold = "tools.tsrThreshold"
+        static let tsrForegroundRatio = "tools.tsrForegroundRatio"
+        static let tsrKeepLargest = "tools.tsrKeepLargest"
         static let reliefDepth = "tools.reliefDepth"
         static let reliefResolution = "tools.reliefResolution"
         static let reliefSmoothing = "tools.reliefSmoothing"
@@ -44,6 +47,8 @@ enum ToolDefaults {
     static let fallbackPaintHardness = 0.6
     static let fallbackPaintOpacity = 1.0
     static let fallbackSceneSpacing = 2.5
+    static let fallbackTSRThreshold = 25.0
+    static let fallbackTSRForegroundRatio = 0.85
     static let fallbackReliefDepth = 0.25
     static let fallbackReliefResolution = 256.0
     static let fallbackReliefSmoothing = 2.0
@@ -68,6 +73,9 @@ enum ToolDefaults {
     static func paintOpacity(_ d: UserDefaults = .standard) -> Double { double(Key.paintOpacity, fallbackPaintOpacity, d) }
     static func sceneSpacing(_ d: UserDefaults = .standard) -> Double { double(Key.sceneSpacing, fallbackSceneSpacing, d) }
     static func exportQuads(_ d: UserDefaults = .standard) -> Bool { d.bool(forKey: Key.exportQuads) }
+    static func tsrThreshold(_ d: UserDefaults = .standard) -> Float { Float(double(Key.tsrThreshold, fallbackTSRThreshold, d)) }
+    static func tsrForegroundRatio(_ d: UserDefaults = .standard) -> Float { Float(double(Key.tsrForegroundRatio, fallbackTSRForegroundRatio, d)) }
+    static func tsrKeepLargest(_ d: UserDefaults = .standard) -> Bool { d.object(forKey: Key.tsrKeepLargest) as? Bool ?? true }
     static func reliefDepth(_ d: UserDefaults = .standard) -> Double { double(Key.reliefDepth, fallbackReliefDepth, d) }
     static func reliefResolution(_ d: UserDefaults = .standard) -> Int { Int(double(Key.reliefResolution, fallbackReliefResolution, d)) }
     static func reliefSmoothing(_ d: UserDefaults = .standard) -> Int { Int(double(Key.reliefSmoothing, fallbackReliefSmoothing, d)) }

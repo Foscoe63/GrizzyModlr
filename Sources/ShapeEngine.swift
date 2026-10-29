@@ -4,6 +4,7 @@ import ImageIO
 import simd
 import MLX
 import Hy3DMLX
+import HunyuanPaintMLX
 
 /// A cancellable handle to an in-flight generation.
 protocol CancellableRun: AnyObject {
@@ -24,6 +25,7 @@ final class ShapeEngine {
     private let queue = DispatchQueue(label: "com.zimeng.Modelr.shape", qos: .userInitiated)
     private var cachedKey: String?
     private var cachedGen: ShapeGenerator?
+    private var cachedTSR: (key: String, model: TripoSR)?
 
     /// Cooperative cancellation token. `ShapeGenerator.generate` polls `cancelled`
     /// per denoise step and at each stage boundary, so a cancel stops work promptly
@@ -50,6 +52,13 @@ final class ShapeEngine {
             if run.cancelled { onFinish(.failure("Cancelled")); return }
             guard let cg = Self.loadCGImage(imageURL) else {
                 onFinish(.failure("Couldn't read the input image.")); return
+            }
+
+            // TripoSR (a torch checkpoint) takes its own single-pass route.
+            if weightsURL.pathExtension == "ckpt" {
+                self.runTripo(image: cg, run: run, weights: weightsURL, resolution: resolution, output: output,
+                              onProgress: onProgress, onFinish: onFinish)
+                return
             }
 
             // Reuse the resident model when the weights + quantization match.
@@ -128,6 +137,7 @@ final class ShapeEngine {
         queue.async {
             self.cachedKey = nil
             self.cachedGen = nil
+            self.cachedTSR = nil
             MLX.GPU.clearCache()
         }
     }
@@ -140,10 +150,89 @@ final class ShapeEngine {
             queue.async {
                 self.cachedKey = nil
                 self.cachedGen = nil
+                self.cachedTSR = nil
                 MLX.GPU.clearCache()
                 cont.resume()
             }
         }
+    }
+
+    // MARK: TripoSR
+
+    /// One feed-forward pass: image → triplane → density grid → mesh. Seconds, not minutes.
+    private func runTripo(image cg: CGImage, run: Run, weights: URL, resolution: Int, output: URL,
+                          onProgress: @escaping (String, String?, Double?) -> Void,
+                          onFinish: @escaping (GenerationOutcome) -> Void) {
+        defer { MLX.GPU.clearCache() }
+        let model: TripoSR
+        if let c = cachedTSR, c.key == weights.path { model = c.model } else {
+            onProgress("Loading model…", nil, nil)
+            cachedTSR = nil; cachedKey = nil; cachedGen = nil
+            do { model = try TripoSR(checkpoint: weights) }
+            catch { onFinish(.failure("Couldn't load the model: \(error.localizedDescription)")); return }
+            cachedTSR = (weights.path, model)
+        }
+        if run.cancelled { onFinish(.failure("Cancelled")); return }
+
+        onProgress("Conditioning image", nil, 0.05)
+        guard let (rgba, w, h) = Self.subjectRGBA(cg),
+              let pixels = TripoSR.preprocess(rgba: rgba, width: w, height: h,
+                                              foregroundRatio: ToolDefaults.tsrForegroundRatio()) else {
+            onFinish(.failure("Couldn't find a subject in the image. Try removing the background first.")); return
+        }
+        let planes = model.triplanes(model.imageTokens(pixels))
+        eval(planes)
+        if run.cancelled { onFinish(.failure("Cancelled")); return }
+
+        onProgress("Decoding shape", nil, 0.3)
+        guard let density = model.densityGrid(planes, resolution: resolution, isCancelled: { run.cancelled }) else {
+            onFinish(.failure("Cancelled")); return
+        }
+        onProgress("Building mesh", nil, 0.85)
+        guard let mesh = TripoMesh.extract(density: density, resolution: resolution, radius: 0.87,
+                                           threshold: ToolDefaults.tsrThreshold(),
+                                           keepLargestPiece: ToolDefaults.tsrKeepLargest()) else {
+            onFinish(.failure("The model found no surface. Try a lower surface threshold in Settings → Tools.")); return
+        }
+        if run.cancelled { onFinish(.failure("Cancelled")); return }
+        do {
+            try MeshDecimator.serialize(positions: mesh.positions, faces: mesh.faces).write(to: output)
+            onFinish(.success)
+        } catch { onFinish(.failure("Couldn't write the mesh: \(error.localizedDescription)")) }
+    }
+
+    /// Straight RGBA8 of the subject: the image's own transparency when it has any, otherwise a
+    /// Vision foreground mask (the shape model needs the subject isolated).
+    private static func subjectRGBA(_ image: CGImage) -> ([UInt8], Int, Int)? {
+        let w = image.width, h = image.height
+        var buf = [UInt8](repeating: 0, count: w * h * 4)
+        let ok = buf.withUnsafeMutableBytes { raw -> Bool in
+            guard let ctx = CGContext(data: raw.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return true
+        }
+        guard ok else { return nil }
+        // un-premultiply
+        var hasTransparency = false
+        for i in 0 ..< w * h {
+            let a = Int(buf[i * 4 + 3])
+            if a < 255 { hasTransparency = true }
+            if a > 0 && a < 255 { for c in 0 ..< 3 { buf[i * 4 + c] = UInt8(min(255, Int(buf[i * 4 + c]) * 255 / a)) } }
+        }
+        if hasTransparency { return (buf, w, h) }
+        guard let mask = BackgroundRemover.visionMask(for: image) else { return nil }
+        var m = [UInt8](repeating: 0, count: w * h)
+        let drew = m.withUnsafeMutableBytes { raw -> Bool in
+            guard let ctx = CGContext(data: raw.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
+                                      space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return false }
+            ctx.draw(mask, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return true
+        }
+        guard drew else { return nil }
+        for i in 0 ..< w * h { buf[i * 4 + 3] = m[i] }
+        return (buf, w, h)
     }
 
     private static func loadCGImage(_ url: URL) -> CGImage? {

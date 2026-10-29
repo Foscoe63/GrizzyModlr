@@ -672,7 +672,8 @@ struct ProjectDetailView: View {
     /// so it updates immediately when you change quality. Full quant is omitted.
     private var settingsLabel: String {
         let s = project.resolvedSettings
-        return s.quant == .full ? s.model.label : "\(s.model.label) · \(s.quant.label)"
+        // TripoSR has no quantization option, so its label never carries one.
+        return (s.quant == .full || s.model == .fast) ? s.model.label : "\(s.model.label) · \(s.quant.label)"
     }
 
     /// What to show in the viewer: the latest streamed preview mesh while running,

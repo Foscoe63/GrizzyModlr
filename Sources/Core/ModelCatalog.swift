@@ -14,6 +14,8 @@ enum ModelID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case textToImage = "text-to-image"
     /// Depth Anything V2 Small: optional, powers depth relief meshes.
     case depthEstimation = "depth-estimation"
+    /// TripoSR: a fast single-pass shape model (seconds); the "Fast" shape option.
+    case triposr = "triposr"
 
     var id: String { rawValue }
 
@@ -22,7 +24,7 @@ enum ModelID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
 
     var kind: EngineKind {
         switch self {
-        case .shapeSmall, .shapeLarge, .shapeMultiView: return .shape
+        case .shapeSmall, .shapeLarge, .shapeMultiView, .triposr: return .shape
         case .paintSmall, .paintLarge, .viewSynthesis, .textToImage, .depthEstimation: return .paint
         }
     }
@@ -194,6 +196,16 @@ enum ModelCatalog {
             files: [
                 CatalogFile(path: "model.safetensors", bytes: 99_173_660,
                             sha256: "3152477ce0d8d6978d76b995120de97cb5b928701fd0f817769f59e249a16b70"),
+            ]),
+        CatalogModel(
+            id: .triposr,
+            displayName: "Shape · Fast",
+            detail: "TripoSR · 0.4B · shape in seconds, lower detail (MIT license)",
+            repo: "stabilityai/TripoSR",
+            revision: "5b521936b01fbe1890f6f9baed0254ab6351c04a",
+            files: [
+                CatalogFile(path: "model.ckpt", bytes: 1_677_246_742,
+                            sha256: "429e2c6b22a0923967459de24d67f05962b235f79cde6b032aa7ed2ffcd970ee"),
             ]),
     ]
 

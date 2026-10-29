@@ -143,8 +143,8 @@ enum MeshBoolean {
         func cid(_ x: Int, _ y: Int, _ z: Int) -> Int { (z * cy + y) * cx + x }
         let corners: [(Int, Int, Int)] = [(0,0,0),(1,0,0),(0,1,0),(1,1,0),(0,0,1),(1,0,1),(0,1,1),(1,1,1)]
         let edges: [(Int, Int)] = [(0,1),(2,3),(4,5),(6,7),(0,2),(1,3),(4,6),(5,7),(0,4),(1,5),(2,6),(3,7)]
+        var v = [Float](repeating: 0, count: 8)                       // reused: no per-cell allocation
         for z in 0..<cz { for y in 0..<cy { for x in 0..<cx {
-            var v = [Float](repeating: 0, count: 8)
             var neg = 0
             for (n, o) in corners.enumerated() {
                 v[n] = f[g.index(x + o.0, y + o.1, z + o.2)]

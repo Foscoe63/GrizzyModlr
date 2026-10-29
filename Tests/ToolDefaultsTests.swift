@@ -73,4 +73,22 @@ final class ToolDefaultsTests: XCTestCase {
         d.set(384.0, forKey: ToolDefaults.Key.reliefResolution)
         XCTAssertEqual(ToolDefaults.reliefResolution(d), 384)
     }
+
+    func testFastShapeModelMapsToTripoSR() {
+        XCTAssertTrue(ShapeModel.allCases.contains(.fast))
+        XCTAssertEqual(ShapeModel.fast.modelID, .triposr)
+        XCTAssertEqual(ShapeModel(legacyRaw: "fast"), .fast)
+        XCTAssertEqual(ShapeModel(legacyRaw: "nonsense"), .small)
+        XCTAssertEqual(ModelID.triposr.kind, .shape)
+        XCTAssertFalse(ModelCatalog.everything.contains(.triposr))
+        let m = ModelCatalog.model(.triposr)
+        XCTAssertEqual(m.files.map(\.path), ["model.ckpt"])
+        XCTAssertEqual(m.files[0].bytes, 1_677_246_742)
+        XCTAssertEqual(m.files[0].sha256.count, 64)
+        for q in QualityPreset.allCases { XCTAssertEqual(q.steps(for: .fast), 1) }
+        let d = suite()
+        XCTAssertEqual(ToolDefaults.tsrThreshold(d), 25)
+        XCTAssertEqual(ToolDefaults.tsrForegroundRatio(d), 0.85)
+        XCTAssertTrue(ToolDefaults.tsrKeepLargest(d))
+    }
 }

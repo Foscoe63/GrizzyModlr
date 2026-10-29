@@ -90,7 +90,8 @@ enum ModelStore {
     /// nil unless the model is fully installed.
     static func shapeWeightsFile(for model: ShapeModel) -> URL? {
         guard isInstalled(model.modelID) else { return nil }
-        return installDir(for: model.modelID).appendingPathComponent("model.fp16.safetensors")
+        // TripoSR ships as a torch checkpoint; the Hunyuan models as fp16 safetensors.
+        return installDir(for: model.modelID).appendingPathComponent(model == .fast ? "model.ckpt" : "model.fp16.safetensors")
     }
 
     /// Install directory of the Zero123++ weights (diffusers layout); nil unless fully installed.

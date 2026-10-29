@@ -299,6 +299,9 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.paintOpacity) private var paintOpacity = ToolDefaults.fallbackPaintOpacity
     @AppStorage(ToolDefaults.Key.sceneSpacing) private var sceneSpacing = ToolDefaults.fallbackSceneSpacing
     @AppStorage(ToolDefaults.Key.exportQuads) private var exportQuads = false
+    @AppStorage(ToolDefaults.Key.tsrThreshold) private var tsrThreshold = ToolDefaults.fallbackTSRThreshold
+    @AppStorage(ToolDefaults.Key.tsrForegroundRatio) private var tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
+    @AppStorage(ToolDefaults.Key.tsrKeepLargest) private var tsrKeepLargest = true
     @AppStorage(ToolDefaults.Key.reliefDepth) private var reliefDepth = ToolDefaults.fallbackReliefDepth
     @AppStorage(ToolDefaults.Key.reliefResolution) private var reliefResolution = ToolDefaults.fallbackReliefResolution
     @AppStorage(ToolDefaults.Key.reliefSmoothing) private var reliefSmoothing = ToolDefaults.fallbackReliefSmoothing
@@ -354,6 +357,13 @@ struct ToolSettingsView: View {
                     slider($sceneSpacing, 1.5...6, step: 0.25, label: String(format: "%.2f units", sceneSpacing))
                 }
             }
+            Section("Fast shape (TripoSR)") {
+                LabeledContent("Surface threshold") { slider($tsrThreshold, 5...80, step: 1, label: String(format: "%.0f", tsrThreshold)) }
+                LabeledContent("Subject size in frame") { slider($tsrForegroundRatio, 0.5...1, step: 0.05, label: String(format: "%.0f%%", tsrForegroundRatio * 100)) }
+                Toggle("Drop floating specks (keep the largest piece)", isOn: $tsrKeepLargest)
+                Text("Pick Fast in the shape model menu. Higher threshold = thinner surface; mesh detail follows the quality slider. Fast makes the shape only; paint it afterwards.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Depth relief") {
                 LabeledContent("Relief height") { slider($reliefDepth, 0.05...0.6, step: 0.05, label: String(format: "%.0f%% of width", reliefDepth * 100)) }
                 LabeledContent("Detail") { slider($reliefResolution, 96...512, step: 32, label: "\(Int(reliefResolution)) samples") }
@@ -388,7 +398,7 @@ struct ToolSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(height: 700)
+        .frame(height: 740)
     }
 
     private func slider(_ value: Binding<Double>, _ range: ClosedRange<Double>, step: Double, label: String) -> some View {
@@ -407,6 +417,8 @@ struct ToolSettingsView: View {
         paintSize = ToolDefaults.fallbackPaintSize; paintHardness = ToolDefaults.fallbackPaintHardness
         paintOpacity = ToolDefaults.fallbackPaintOpacity; sceneSpacing = ToolDefaults.fallbackSceneSpacing
         exportQuads = false
+        tsrThreshold = ToolDefaults.fallbackTSRThreshold; tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
+        tsrKeepLargest = true
         reliefDepth = ToolDefaults.fallbackReliefDepth; reliefResolution = ToolDefaults.fallbackReliefResolution
         reliefSmoothing = ToolDefaults.fallbackReliefSmoothing
         ttiSteps = ToolDefaults.fallbackTTISteps; ttiGuidance = ToolDefaults.fallbackTTIGuidance
