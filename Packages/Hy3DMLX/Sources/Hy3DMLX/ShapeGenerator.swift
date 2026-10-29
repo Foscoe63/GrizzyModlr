@@ -9,6 +9,8 @@ public final class ShapeGenerator {
     public let vae: VAE
     public let dino: DINOv2
     public let numLatents: Int
+    /// True for Hunyuan3D-2mv checkpoints (config declares the multi-view DINO encoder).
+    public let isMultiView: Bool
 
     /// Load a bundled 2mini checkpoint (single `.safetensors`) and build DiT + VAE + DINOv2.
     /// Weights stay in their on-disk dtype (fp16) — upcasting to fp32 would double resident memory
@@ -45,6 +47,13 @@ public final class ShapeGenerator {
         self.vae = VAE(weights: vw, scaleFactor: cfg?.scaleFactor ?? 1.0188137)
         self.dino = DINOv2(weights: nw, bits: bits, groupSize: group)
         self.numLatents = cfg?.numLatents ?? numLatents
+        self.isMultiView = Self.declaresMultiView(weightsURL)
+    }
+
+    /// Whether the sibling config.yaml names the multi-view image encoder.
+    static func declaresMultiView(_ weightsURL: URL) -> Bool {
+        let url = weightsURL.deletingLastPathComponent().appendingPathComponent("config.yaml")
+        return ((try? String(contentsOf: url, encoding: .utf8))?.contains("DinoImageEncoderMV")) ?? false
     }
 
     struct ModelConfig { let depth: Int; let depthSingle: Int; let guidanceEmbed: Bool; let numLatents: Int; let scaleFactor: Float }
@@ -104,6 +113,41 @@ public final class ShapeGenerator {
         let embed = dino(pix)
         let cond = dit.guidanceEmbed ? embed : concatenated([embed, dino.unconditional(1)], axis: 0)
         eval(cond)
+        return generate(cond: cond, steps: steps, guidance: guidance, seed: seed, resolution: resolution,
+                        octree: octree, isCancelled: isCancelled, onPreview: onPreview, onProgress: onProgress)
+    }
+
+    /// Multi-view generation (Hunyuan3D-2mv checkpoints): every provided view is encoded by
+    /// DINOv2, tagged with its sinusoidal view embedding, and the token sequences are
+    /// concatenated into one cross-attention context. Needs a checkpoint whose config.yaml
+    /// declares `DinoImageEncoderMV` (see `isMultiView`); returns nil otherwise.
+    public func generate(views: [(angle: ViewAngle, image: CGImage)], steps: Int = 30, guidance: Float = 5.0,
+                         seed: UInt64 = 0, resolution: Int = 256, octree: Bool = true,
+                         isCancelled: () -> Bool = { false },
+                         onPreview: ((Mesh) -> Void)? = nil,
+                         onProgress: ((Progress) -> Void)? = nil) -> Mesh? {
+        guard isMultiView, !views.isEmpty else { return nil }
+        var tokens: [MLXArray] = []
+        for (n, v) in views.enumerated() {
+            guard let pix = Preprocess.dinoPixels(cgImage: v.image) else { return nil }
+            if isCancelled() { return nil }
+            onProgress?(.init(stage: "Conditioning view \(n + 1)/\(views.count)",
+                              fraction: 0.05 * Float(n + 1) / Float(views.count)))
+            let t = dino(pix)                                              // [1, T, C]
+            let emb = MultiView.viewEmbedding(index: v.angle.rawValue, hidden: t.dim(2)).asType(t.dtype)
+            tokens.append(t + emb.reshaped([1, 1, t.dim(2)]))
+        }
+        let embed = concatenated(tokens, axis: 1)                          // [1, V*T, C]
+        let cond = dit.guidanceEmbed ? embed
+            : concatenated([embed, dino.unconditional(1, tokens: embed.dim(1), hidden: embed.dim(2))], axis: 0)
+        eval(cond)
+        return generate(cond: cond, steps: steps, guidance: guidance, seed: seed, resolution: resolution,
+                        octree: octree, isCancelled: isCancelled, onPreview: onPreview, onProgress: onProgress)
+    }
+
+    private func generate(cond: MLXArray, steps: Int, guidance: Float, seed: UInt64, resolution: Int,
+                          octree: Bool, isCancelled: () -> Bool, onPreview: ((Mesh) -> Void)?,
+                          onProgress: ((Progress) -> Void)?) -> Mesh? {
         if isCancelled() { return nil }
 
         let pipe = Pipeline(dit: dit, vae: vae)
