@@ -60,4 +60,17 @@ final class ToolDefaultsTests: XCTestCase {
             "unet/diffusion_pytorch_model.fp16.safetensors", "vae/diffusion_pytorch_model.fp16.safetensors"])
         XCTAssertGreaterThan(m.totalBytes, 2_500_000_000)
     }
+
+    func testDepthModelAndReliefDefaults() {
+        XCTAssertFalse(ModelCatalog.everything.contains(.depthEstimation))
+        let m = ModelCatalog.model(.depthEstimation)
+        XCTAssertEqual(m.files.map(\.path), ["model.safetensors"])
+        XCTAssertEqual(m.files[0].sha256.count, 64)
+        let d = suite()
+        XCTAssertEqual(ToolDefaults.reliefDepth(d), 0.25)
+        XCTAssertEqual(ToolDefaults.reliefResolution(d), 256)
+        XCTAssertEqual(ToolDefaults.reliefSmoothing(d), 2)
+        d.set(384.0, forKey: ToolDefaults.Key.reliefResolution)
+        XCTAssertEqual(ToolDefaults.reliefResolution(d), 384)
+    }
 }

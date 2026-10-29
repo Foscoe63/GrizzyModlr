@@ -12,6 +12,8 @@ enum ModelID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case viewSynthesis = "view-synthesis"
     /// Stable Diffusion 2.1 base: optional, turns a text prompt into the starting image.
     case textToImage = "text-to-image"
+    /// Depth Anything V2 Small: optional, powers depth relief meshes.
+    case depthEstimation = "depth-estimation"
 
     var id: String { rawValue }
 
@@ -21,7 +23,7 @@ enum ModelID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     var kind: EngineKind {
         switch self {
         case .shapeSmall, .shapeLarge, .shapeMultiView: return .shape
-        case .paintSmall, .paintLarge, .viewSynthesis, .textToImage: return .paint
+        case .paintSmall, .paintLarge, .viewSynthesis, .textToImage, .depthEstimation: return .paint
         }
     }
 }
@@ -182,6 +184,16 @@ enum ModelCatalog {
                             sha256: "28ec9cf3b239c0751c201b1f6fb46b551df5862731b30a37aa1360101cb3fbab"),
                 CatalogFile(path: "vae/diffusion_pytorch_model.fp16.safetensors", bytes: 167_335_342,
                             sha256: "3e4c08995484ee61270175e9e7a072b66a6e4eeb5f0c266667fe1f45b90daf9a"),
+            ]),
+        CatalogModel(
+            id: .depthEstimation,
+            displayName: "Depth estimation",
+            detail: "Depth Anything V2 Small · 25M · single-image depth for relief meshes (Apache-2.0)",
+            repo: "depth-anything/Depth-Anything-V2-Small-hf",
+            revision: "5426e4f0f36572d16453bbda7a8389317b1bef99",
+            files: [
+                CatalogFile(path: "model.safetensors", bytes: 99_173_660,
+                            sha256: "3152477ce0d8d6978d76b995120de97cb5b928701fd0f817769f59e249a16b70"),
             ]),
     ]
 

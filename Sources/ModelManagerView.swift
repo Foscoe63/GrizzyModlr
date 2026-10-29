@@ -299,6 +299,9 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.paintOpacity) private var paintOpacity = ToolDefaults.fallbackPaintOpacity
     @AppStorage(ToolDefaults.Key.sceneSpacing) private var sceneSpacing = ToolDefaults.fallbackSceneSpacing
     @AppStorage(ToolDefaults.Key.exportQuads) private var exportQuads = false
+    @AppStorage(ToolDefaults.Key.reliefDepth) private var reliefDepth = ToolDefaults.fallbackReliefDepth
+    @AppStorage(ToolDefaults.Key.reliefResolution) private var reliefResolution = ToolDefaults.fallbackReliefResolution
+    @AppStorage(ToolDefaults.Key.reliefSmoothing) private var reliefSmoothing = ToolDefaults.fallbackReliefSmoothing
     @AppStorage(ToolDefaults.Key.ttiSteps) private var ttiSteps = ToolDefaults.fallbackTTISteps
     @AppStorage(ToolDefaults.Key.ttiGuidance) private var ttiGuidance = ToolDefaults.fallbackTTIGuidance
     @AppStorage(ToolDefaults.Key.ttiNegative) private var ttiNegative = ToolDefaults.fallbackTTINegative
@@ -351,6 +354,13 @@ struct ToolSettingsView: View {
                     slider($sceneSpacing, 1.5...6, step: 0.25, label: String(format: "%.2f units", sceneSpacing))
                 }
             }
+            Section("Depth relief") {
+                LabeledContent("Relief height") { slider($reliefDepth, 0.05...0.6, step: 0.05, label: String(format: "%.0f%% of width", reliefDepth * 100)) }
+                LabeledContent("Detail") { slider($reliefResolution, 96...512, step: 32, label: "\(Int(reliefResolution)) samples") }
+                LabeledContent("Smoothing") { slider($reliefSmoothing, 0...8, step: 1, label: "\(Int(reliefSmoothing)) passes") }
+                Text("Estimates depth from the image (Depth Anything V2) and extrudes a solid with a flat back — a quick 2.5D shape.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Text to 3D") {
                 LabeledContent("Image steps") { slider($ttiSteps, 10...50, step: 1, label: "\(Int(ttiSteps)) steps") }
                 LabeledContent("Prompt strength") { slider($ttiGuidance, 3...14, step: 0.5, label: String(format: "%.1f", ttiGuidance)) }
@@ -378,7 +388,7 @@ struct ToolSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(height: 640)
+        .frame(height: 700)
     }
 
     private func slider(_ value: Binding<Double>, _ range: ClosedRange<Double>, step: Double, label: String) -> some View {
@@ -397,6 +407,8 @@ struct ToolSettingsView: View {
         paintSize = ToolDefaults.fallbackPaintSize; paintHardness = ToolDefaults.fallbackPaintHardness
         paintOpacity = ToolDefaults.fallbackPaintOpacity; sceneSpacing = ToolDefaults.fallbackSceneSpacing
         exportQuads = false
+        reliefDepth = ToolDefaults.fallbackReliefDepth; reliefResolution = ToolDefaults.fallbackReliefResolution
+        reliefSmoothing = ToolDefaults.fallbackReliefSmoothing
         ttiSteps = ToolDefaults.fallbackTTISteps; ttiGuidance = ToolDefaults.fallbackTTIGuidance
         ttiNegative = ToolDefaults.fallbackTTINegative; ttiSuffix = ToolDefaults.fallbackTTISuffix
         ttiRemoveBackground = true; ttiAutoGenerate = false

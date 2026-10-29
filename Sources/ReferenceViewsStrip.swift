@@ -96,6 +96,15 @@ extension ReferenceViewsStrip {
     @ViewBuilder
     var synthesisRow: some View {
         HStack(spacing: 8) {
+            if case .running? = runtime.relief[projectID] {
+                ProgressView().controlSize(.small)
+                Text("Building relief…").font(.caption).foregroundStyle(.secondary)
+                Button("Cancel") { runtime.cancelRelief(projectID) }.controlSize(.small)
+            } else if case .failed(let message)? = runtime.relief[projectID] {
+                Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
+                Text(message).font(.caption).lineLimit(2)
+                Button { runtime.dismissReliefFailure(projectID) } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
+            }
             switch runtime.viewSynth[projectID] {
             case .running(let p):
                 ProgressView(value: p).frame(width: 90)
@@ -118,6 +127,12 @@ extension ReferenceViewsStrip {
                     Button { showSynth = true } label: { Label("Review", systemImage: "square.grid.3x2") }
                         .controlSize(.small)
                 }
+                Button { runtime.createRelief(for: projectID) } label: { Label("Depth relief", systemImage: "mountain.2") }
+                    .controlSize(.small)
+                    .disabled(runtime.relief[projectID] != nil)
+                    .help(ModelStore.isInstalled(.depthEstimation)
+                          ? "Build a relief solid from the image's estimated depth"
+                          : "Installs the Depth Anything model (99 MB), then builds a relief solid from the image")
                 Button { showTextPanel = true } label: { Label("From text", systemImage: "text.cursor") }
                     .controlSize(.small)
                     .help("Replace the main image with one generated from a description")

@@ -40,6 +40,8 @@ final class AppRuntime {
     private(set) var viewSynth: [Project.ID: ViewSynthState] = [:]
     /// Text → image progress per project (same shape as view synthesis).
     private(set) var textToImage: [Project.ID: ViewSynthState] = [:]
+    /// Depth relief progress per project.
+    private(set) var relief: [Project.ID: ViewSynthState] = [:]
 
     /// Moving the models folder to another drive (copy → verify → switch → delete old copy).
     enum RelocationState: Equatable {
@@ -56,6 +58,8 @@ final class AppRuntime {
     @ObservationIgnored private let viewSynthEngine = ViewSynthEngine()
     @ObservationIgnored private var viewSynthRuns: [Project.ID: ViewSynthEngine.Run] = [:]
     @ObservationIgnored private let textToImageEngine = TextToImageEngine()
+    @ObservationIgnored private let depthEngine = DepthEngine()
+    @ObservationIgnored private var depthRuns: [Project.ID: DepthEngine.Run] = [:]
     @ObservationIgnored private var textToImageRuns: [Project.ID: TextToImageEngine.Run] = [:]
     @ObservationIgnored private let arbiter: EngineArbiter
     @ObservationIgnored private var downloads: DownloadManager!
@@ -231,6 +235,47 @@ final class AppRuntime {
         }
     }
 
+    /// Builds a relief solid from the project's image with Depth Anything and saves it as a
+    /// new shape version (a quick 2.5D alternative to a full generation).
+    func createRelief(for id: Project.ID) {
+        guard relief[id] == nil, let project = store.project(id), let input = store.imageURL(for: project) else { return }
+        guard let weights = ModelStore.depthWeightsFile() else { showModelManager(); return }
+        let busy = state.shape.values.contains { $0.state.isRunning } || state.paint.values.contains { $0.state.isRunning }
+            || viewSynth.values.contains { if case .running = $0 { return true } else { return false } }
+            || textToImage.values.contains { if case .running = $0 { return true } else { return false } }
+        guard !busy else { relief[id] = .failed("Wait for the current generation to finish first."); return }
+        let staged: ProjectStore.StagedShapeRun
+        do { staged = try store.stageShapeRun(for: id) }
+        catch { relief[id] = .failed(error.localizedDescription); return }
+        relief[id] = .running(0.1)
+        // Estimate depth from the original picture when there is one; the cutout supplies the silhouette.
+        let color = project.sourceImageName.map { store.folderURL(for: id).appendingPathComponent($0) } ?? input
+        let options = ReliefMesh.Options(reliefDepth: ToolDefaults.reliefDepth(),
+                                         baseThickness: 0.06, smoothing: ToolDefaults.reliefSmoothing())
+        let resolution = ToolDefaults.reliefResolution()
+        let engine = depthEngine
+        let run = engine.relief(colorURL: FileManager.default.fileExists(atPath: color.path) ? color : input,
+                                maskURL: project.removeBackground ? input : nil,
+                                weights: weights, options: options, resolution: resolution, output: staged.mesh) { outcome in
+            Task { @MainActor in
+                self.depthRuns[id] = nil
+                switch outcome {
+                case .success:
+                    if let error = self.store.commitShapeRun(staged, summary: "depth relief") {
+                        self.relief[id] = .failed(error)
+                    } else { self.relief[id] = nil }
+                case .failure(let message):
+                    self.store.discardShapeRun(staged)
+                    self.relief[id] = message == "Cancelled" ? nil : .failed(message)
+                }
+            }
+        }
+        depthRuns[id] = run
+    }
+
+    func cancelRelief(_ id: Project.ID) { depthRuns[id]?.cancel() }
+    func dismissReliefFailure(_ id: Project.ID) { if case .failed = relief[id] { relief[id] = nil } }
+
     func cancelTextToImage(_ id: Project.ID) { textToImageRuns[id]?.cancel() }
     func dismissTextToImageFailure(_ id: Project.ID) { if case .failed = textToImage[id] { textToImage[id] = nil } }
 
@@ -247,6 +292,7 @@ final class AppRuntime {
             && !state.paint.values.contains { $0.state.isRunning }
             && viewSynth.values.allSatisfy { if case .running = $0 { return false } else { return true } }
             && textToImage.values.allSatisfy { if case .running = $0 { return false } else { return true } }
+            && relief.values.allSatisfy { if case .running = $0 { return false } else { return true } }
     }
 
     /// Copies the library into `picked` (a "Modelr Models" folder is created inside it), then

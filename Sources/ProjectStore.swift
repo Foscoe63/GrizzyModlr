@@ -37,6 +37,8 @@ final class ProjectStore {
 
     private var indexFile: URL { rootDir.appendingPathComponent("projects.json") }
     private var projectsDir: URL { rootDir.appendingPathComponent("projects", isDirectory: true) }
+    func folderURL(for id: Project.ID) -> URL { folder(for: id) }
+
     private func folder(for id: Project.ID) -> URL {
         projectsDir.appendingPathComponent(id.uuidString, isDirectory: true)
     }
@@ -702,7 +704,7 @@ final class ProjectStore {
 
     /// Turn a finished run into a saved generation, selected for viewing.
     /// Returns an error message (and cleans up) if the output is unusable.
-    func commitShapeRun(_ staged: StagedShapeRun) -> String? {
+    func commitShapeRun(_ staged: StagedShapeRun, summary: String? = nil) -> String? {
         guard let i = projects.firstIndex(where: { $0.id == staged.project }) else {
             discardShapeRun(staged)
             return "The project no longer exists."
@@ -724,6 +726,7 @@ final class ProjectStore {
                              seedRaw: staged.seed,
                              sourceFileName: staged.source?.lastPathComponent,
                              maskFileName: staged.mask?.lastPathComponent,
+                             editSummary: summary,
                              extraViewFiles: staged.extraViews.isEmpty ? nil
                                  : Dictionary(uniqueKeysWithValues: staged.extraViews.map { ($0.key.rawValue, $0.value.lastPathComponent) }))
         projects[i].generations.append(gen)

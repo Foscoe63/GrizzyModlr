@@ -20,6 +20,9 @@ enum ToolDefaults {
         static let paintOpacity = "tools.paintOpacity"
         static let sceneSpacing = "tools.sceneSpacing"
         static let exportQuads = "tools.exportQuads"
+        static let reliefDepth = "tools.reliefDepth"
+        static let reliefResolution = "tools.reliefResolution"
+        static let reliefSmoothing = "tools.reliefSmoothing"
         static let ttiSteps = "tools.ttiSteps"
         static let ttiGuidance = "tools.ttiGuidance"
         static let ttiNegative = "tools.ttiNegative"
@@ -41,6 +44,9 @@ enum ToolDefaults {
     static let fallbackPaintHardness = 0.6
     static let fallbackPaintOpacity = 1.0
     static let fallbackSceneSpacing = 2.5
+    static let fallbackReliefDepth = 0.25
+    static let fallbackReliefResolution = 256.0
+    static let fallbackReliefSmoothing = 2.0
     static let fallbackTTISteps = 25.0
     static let fallbackTTIGuidance = 7.5
     static let fallbackTTINegative = "blurry, low quality, deformed, multiple objects, text, watermark, cropped"
@@ -62,6 +68,9 @@ enum ToolDefaults {
     static func paintOpacity(_ d: UserDefaults = .standard) -> Double { double(Key.paintOpacity, fallbackPaintOpacity, d) }
     static func sceneSpacing(_ d: UserDefaults = .standard) -> Double { double(Key.sceneSpacing, fallbackSceneSpacing, d) }
     static func exportQuads(_ d: UserDefaults = .standard) -> Bool { d.bool(forKey: Key.exportQuads) }
+    static func reliefDepth(_ d: UserDefaults = .standard) -> Double { double(Key.reliefDepth, fallbackReliefDepth, d) }
+    static func reliefResolution(_ d: UserDefaults = .standard) -> Int { Int(double(Key.reliefResolution, fallbackReliefResolution, d)) }
+    static func reliefSmoothing(_ d: UserDefaults = .standard) -> Int { Int(double(Key.reliefSmoothing, fallbackReliefSmoothing, d)) }
     static func ttiSteps(_ d: UserDefaults = .standard) -> Int { Int(double(Key.ttiSteps, fallbackTTISteps, d)) }
     static func ttiGuidance(_ d: UserDefaults = .standard) -> Double { double(Key.ttiGuidance, fallbackTTIGuidance, d) }
     static func ttiNegative(_ d: UserDefaults = .standard) -> String { d.string(forKey: Key.ttiNegative) ?? fallbackTTINegative }

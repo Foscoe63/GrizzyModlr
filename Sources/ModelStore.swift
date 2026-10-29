@@ -98,6 +98,11 @@ enum ModelStore {
         isInstalled(.viewSynthesis) ? installDir(for: .viewSynthesis) : nil
     }
 
+    /// The Depth Anything checkpoint; nil unless fully installed.
+    static func depthWeightsFile() -> URL? {
+        isInstalled(.depthEstimation) ? installDir(for: .depthEstimation).appendingPathComponent("model.safetensors") : nil
+    }
+
     /// Install directory of the Stable Diffusion text-to-image weights; nil unless fully installed.
     static func textToImageDir() -> URL? {
         isInstalled(.textToImage) ? installDir(for: .textToImage) : nil

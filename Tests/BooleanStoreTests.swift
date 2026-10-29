@@ -228,4 +228,15 @@ final class SceneStoreTests: XCTestCase {
         let empty = await ProjectStore(rootDir: root).saveSceneAsVersion(for: UUID())
         XCTAssertEqual(empty, "Generate a shape first.")
     }
+
+    func testCommitShapeRunRecordsASummary() throws {
+        let p = store.newProject()
+        let img = root.appendingPathComponent("in.png")
+        try Self.tinyPNG.write(to: img)
+        store.setImage(fromURL: img, for: p.id)
+        let staged = try store.stageShapeRun(for: p.id)
+        try Data(repeating: 7, count: 64).write(to: staged.mesh)
+        XCTAssertNil(store.commitShapeRun(staged, summary: "depth relief"))
+        XCTAssertEqual(store.project(p.id)?.currentGeneration?.editSummary, "depth relief")
+    }
 }
