@@ -20,12 +20,29 @@ struct MeshViewer: NSViewRepresentable {
     var sculpt: SculptController? = nil
     /// When set, left-drag paints the albedo texture of the (textured) content.
     var paint: TexturePaintController? = nil
+    /// One-shot camera / snapshot request from the viewport menu.
+    var command: ViewerCommand? = nil
+
+    @AppStorage(ViewerDefaults.Key.environment) private var envName = ViewerDefaults.fallbackEnvironment
+    @AppStorage(ViewerDefaults.Key.environmentIntensity) private var envIntensity = ViewerDefaults.fallbackIntensity
+    @AppStorage(ViewerDefaults.Key.environmentBackground) private var envBackground = false
+    @AppStorage(ViewerDefaults.Key.showGround) private var showGround = false
+    @AppStorage(ViewerDefaults.Key.shadows) private var shadows = false
+    @AppStorage(ViewerDefaults.Key.autoRotate) private var autoRotate = false
+    @AppStorage(ViewerDefaults.Key.customEnvironmentPath) private var customEnvPath = ""
+
+    private var stageOptions: ViewerDefaults.Options {
+        ViewerDefaults.Options(environment: ViewerEnvironment(rawValue: envName) ?? .none, intensity: envIntensity,
+                               environmentBackground: envBackground, showGround: showGround, shadows: shadows,
+                               autoRotate: autoRotate, customPath: customEnvPath)
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
     final class Coordinator {
         var loaded: ViewerContent?
         var lastFitCenter: SCNVector3?
         var lastFitRadius: CGFloat?
+        var lastCommand: UUID?
     }
 
     func makeNSView(context: Context) -> SculptSCNView {
@@ -42,6 +59,7 @@ struct MeshViewer: NSViewRepresentable {
         scene.rootNode.addChildNode(container)
 
         let ambient = SCNNode()
+        ambient.name = "BaseAmbient"
         ambient.light = SCNLight()
         ambient.light?.type = .ambient
         ambient.light?.intensity = 280
@@ -65,6 +83,11 @@ struct MeshViewer: NSViewRepresentable {
     }
 
     func updateNSView(_ view: SculptSCNView, context: Context) {
+        ViewerStage.apply(view, options: stageOptions, allowSpin: sculpt == nil && paint == nil)
+        if let command, context.coordinator.lastCommand != command.id {
+            context.coordinator.lastCommand = command.id
+            run(command, in: view)
+        }
         if let sculpt {
             if view.controller !== sculpt, let container = container(in: view) {
                 view.attach(sculpt, container: container)
@@ -106,6 +129,7 @@ struct MeshViewer: NSViewRepresentable {
                 if let container = container(in: view), let result {
                     container.childNodes.forEach { $0.removeFromParentNode() }
                     container.addChildNode(result.node)
+                    ViewerStage.apply(view, options: stageOptions, allowSpin: sculpt == nil && paint == nil)
                     // Re-fit only when the content's bounds change meaningfully (>~3%),
                     // so streaming frames don't yank the camera while the user orbits.
                     if Self.boundsChanged(center: result.center, radius: result.radius,
@@ -314,7 +338,30 @@ struct MeshViewer: NSViewRepresentable {
 
     // MARK: - framing
 
-    private static func fitCamera(_ view: SCNView, center: SCNVector3, radius: CGFloat) {
+    private func run(_ command: ViewerCommand, in view: SCNView) {
+        guard let container = container(in: view) else { return }
+        switch command.kind {
+        case .camera(let preset):
+            let (c, r) = ViewerStage.bounds(of: container)
+            container.removeAction(forKey: "spin")
+            container.eulerAngles = SCNVector3(0, 0, 0)               // undo any turntable rotation
+            Self.fitCamera(view, center: c, radius: r, direction: preset.direction, up: preset.up)
+        case .snapshot:
+            let image = view.snapshot()
+            DispatchQueue.main.async {
+                let panel = NSSavePanel()
+                panel.allowedContentTypes = [.png]
+                panel.nameFieldStringValue = "view.png"
+                guard panel.runModal() == .OK, let url = panel.url,
+                      let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+                      let png = rep.representation(using: .png, properties: [:]) else { return }
+                try? png.write(to: url)
+            }
+        }
+    }
+
+    private static func fitCamera(_ view: SCNView, center: SCNVector3, radius: CGFloat,
+                                  direction: SIMD3<Float> = [0, 0, 1], up: SIMD3<Float> = [0, 1, 0]) {
         guard let cameraNode = view.pointOfView, let camera = cameraNode.camera else { return }
         // Fit the object to the *limiting* field of view so it never overflows a
         // non-square pane; generous margin so it sits comfortably inside.
@@ -324,8 +371,11 @@ struct MeshViewer: NSViewRepresentable {
         let vFov = 2 * atan(tan(hFov / 2) / max(aspect, 0.001))
         let limitFov = min(hFov, vFov)
         let distance = Double(radius) / tan(limitFov / 2) * 1.5
-        cameraNode.position = SCNVector3(center.x, center.y, center.z + CGFloat(distance))
-        cameraNode.look(at: center)
+        cameraNode.position = SCNVector3(center.x + CGFloat(direction.x) * CGFloat(distance),
+                                         center.y + CGFloat(direction.y) * CGFloat(distance),
+                                         center.z + CGFloat(direction.z) * CGFloat(distance))
+        cameraNode.look(at: center, up: SCNVector3(CGFloat(up.x), CGFloat(up.y), CGFloat(up.z)),
+                        localFront: SCNVector3(0, 0, -1))
         camera.zNear = max(distance * 0.01, 0.001)
         camera.zFar = distance * 10 + 100
     }

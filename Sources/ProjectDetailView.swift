@@ -18,6 +18,8 @@ struct ProjectDetailView: View {
     @State private var texturePaint: TexturePaintController?
     @State private var paintBusy = false
     @State private var uvEditor: UVEditorModel?
+    @State private var shapeViewerCommand: ViewerCommand?
+    @State private var paintViewerCommand: ViewerCommand?
     @State private var showMaterialEdit = false
     @State private var showPaintSettings = false
     @State private var editorInputs: MaskEditorInputs?
@@ -155,9 +157,12 @@ struct ProjectDetailView: View {
                     PointCloud().frame(width: 130, height: 130)
                 }
             } else if let textured = texturedContent {
-                MeshViewer(content: textured, paint: texturePaint)
+                MeshViewer(content: textured, paint: texturePaint, command: paintViewerCommand)
             }
             paintStatusOverlay
+            if paintExportSource != nil {
+                VStack { HStack { ViewerMenuButton { paintViewerCommand = $0 }; Spacer() }; Spacer() }.padding(10)
+            }
             if let texturePaint {
                 VStack {
                     Spacer()
@@ -499,7 +504,7 @@ struct ProjectDetailView: View {
     private var outputPane: some View {
         ZStack {
             if let content = displayedContent {
-                MeshViewer(content: content, onLoading: { objectLoading = $0 }, sculpt: sculpt)
+                MeshViewer(content: content, onLoading: { objectLoading = $0 }, sculpt: sculpt, command: shapeViewerCommand)
             } else if shapeJob.isRunning {
                 PointCloud()                     // animation while loading (no content yet)
                     .frame(width: 150, height: 150)
@@ -509,6 +514,9 @@ struct ProjectDetailView: View {
                 generateCTA
             }
             statusOverlay
+            if displayedContent != nil, !shapeJob.isRunning {
+                VStack { HStack { ViewerMenuButton { shapeViewerCommand = $0 }; Spacer() }; Spacer() }.padding(10)
+            }
             exportOverlay(meshURL: shapeJob.isRunning ? nil : store.shapeMeshURL(for: project),
                           texture: nil, editable: !shapeJob.isRunning && sculpt == nil)
             if let sculpt {

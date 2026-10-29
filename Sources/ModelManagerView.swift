@@ -9,6 +9,8 @@ struct SettingsView: View {
                 .tabItem { Label("Models", systemImage: "square.stack.3d.up") }
             ToolSettingsView()
                 .tabItem { Label("Tools", systemImage: "wand.and.stars") }
+            ViewerSettingsView()
+                .tabItem { Label("Viewer", systemImage: "camera.viewfinder") }
         }
         .frame(width: 560)
     }
@@ -366,5 +368,70 @@ struct ToolSettingsView: View {
         sculptSize = ToolDefaults.fallbackSculptSize; sculptStrength = ToolDefaults.fallbackSculptStrength
         paintSize = ToolDefaults.fallbackPaintSize; paintHardness = ToolDefaults.fallbackPaintHardness
         paintOpacity = ToolDefaults.fallbackPaintOpacity
+    }
+}
+
+/// Settings → Viewer: lighting, ground and turntable defaults for every 3D viewport.
+struct ViewerSettingsView: View {
+    @AppStorage(ViewerDefaults.Key.environment) private var envName = ViewerDefaults.fallbackEnvironment
+    @AppStorage(ViewerDefaults.Key.environmentIntensity) private var intensity = ViewerDefaults.fallbackIntensity
+    @AppStorage(ViewerDefaults.Key.environmentBackground) private var envBackground = false
+    @AppStorage(ViewerDefaults.Key.showGround) private var showGround = false
+    @AppStorage(ViewerDefaults.Key.shadows) private var shadows = false
+    @AppStorage(ViewerDefaults.Key.autoRotate) private var autoRotate = false
+    @AppStorage(ViewerDefaults.Key.customEnvironmentPath) private var customPath = ""
+
+    var body: some View {
+        Form {
+            Section("Lighting") {
+                Picker("Environment", selection: $envName) {
+                    ForEach(ViewerEnvironment.allCases) { Text($0.label).tag($0.rawValue) }
+                }
+                if envName != ViewerEnvironment.none.rawValue {
+                    LabeledContent("Intensity") {
+                        HStack {
+                            Slider(value: $intensity, in: 0.2...3, step: 0.1).frame(width: 170)
+                            Text(String(format: "×%.1f", intensity)).font(.caption).foregroundStyle(.secondary).frame(width: 40)
+                        }
+                    }
+                    Toggle("Show environment as background", isOn: $envBackground)
+                }
+                if envName == ViewerEnvironment.custom.rawValue {
+                    LabeledContent("HDR image") {
+                        HStack {
+                            Text(customPath.isEmpty ? "None chosen" : (customPath as NSString).lastPathComponent)
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).frame(maxWidth: 160)
+                            Button("Choose…") { chooseHDR() }
+                        }
+                    }
+                    if customPath.isEmpty {
+                        Text("Pick an equirectangular .hdr, .exr, .png or .jpg.").font(.caption).foregroundStyle(.orange)
+                    }
+                }
+                Text("Environments light physically based surfaces and add reflections. Plain meshes switch to a matte PBR look while one is active.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Stage") {
+                Toggle("Ground plane", isOn: $showGround)
+                Toggle("Shadows", isOn: $shadows)
+                Toggle("Turntable (slow auto-rotate)", isOn: $autoRotate)
+            }
+            Section {
+                Button("Reset to defaults") {
+                    envName = ViewerDefaults.fallbackEnvironment; intensity = ViewerDefaults.fallbackIntensity
+                    envBackground = false; showGround = false; shadows = false; autoRotate = false; customPath = ""
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(height: 440)
+    }
+
+    private func chooseHDR() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose an environment image"
+        panel.allowedContentTypes = [.image]
+        panel.canChooseDirectories = false
+        if panel.runModal() == .OK, let url = panel.url { customPath = url.path }
     }
 }
