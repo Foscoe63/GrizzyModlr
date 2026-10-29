@@ -223,7 +223,10 @@ struct SceneViewer: NSViewRepresentable {
                                                               -loaded.center.z * CGFloat(s))
                             wrapper.addChildNode(loaded.node)
                             self.stage(view)
-                            if !co.framed { co.framed = true; self.fit(view, preset: .threeQuarter) }
+                            // Frame once every placed object has finished loading.
+                            if !co.framed, co.wrappers.values.allSatisfy({ $0.childNodes.contains { $0.name != "SelectionRing" } }) {
+                                co.framed = true; self.fit(view, preset: .threeQuarter)
+                            }
                         }
                     }
                 }
