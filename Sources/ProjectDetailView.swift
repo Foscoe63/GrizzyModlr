@@ -13,6 +13,8 @@ struct ProjectDetailView: View {
     @State private var showSettings = false
     @State private var showHistory = false
     @State private var showMeshEdit = false
+    @State private var sculpt: SculptController?
+    @State private var sculptBusy = false
     @State private var showMaterialEdit = false
     @State private var showPaintSettings = false
     @State private var editorInputs: MaskEditorInputs?
@@ -439,7 +441,7 @@ struct ProjectDetailView: View {
     private var outputPane: some View {
         ZStack {
             if let content = displayedContent {
-                MeshViewer(content: content, onLoading: { objectLoading = $0 })
+                MeshViewer(content: content, onLoading: { objectLoading = $0 }, sculpt: sculpt)
             } else if shapeJob.isRunning {
                 PointCloud()                     // animation while loading (no content yet)
                     .frame(width: 150, height: 150)
@@ -450,7 +452,23 @@ struct ProjectDetailView: View {
             }
             statusOverlay
             exportOverlay(meshURL: shapeJob.isRunning ? nil : store.shapeMeshURL(for: project),
-                          texture: nil, editable: !shapeJob.isRunning)
+                          texture: nil, editable: !shapeJob.isRunning && sculpt == nil)
+            if let sculpt {
+                VStack {
+                    Spacer()
+                    SculptToolbar(sculpt: sculpt, busy: sculptBusy,
+                                  onSave: {
+                                      sculptBusy = true
+                                      Task {
+                                          let err = await store.commitSculpt(sculpt, for: project.id)
+                                          sculptBusy = false
+                                          if err == nil { self.sculpt = nil }
+                                      }
+                                  },
+                                  onCancel: { self.sculpt = nil })
+                }
+                .padding(12)
+            }
         }
     }
 
@@ -499,7 +517,10 @@ struct ProjectDetailView: View {
                         .buttonStyle(.plain)
                         .help("Edit mesh: decimate, smooth, fill holes")
                         .popover(isPresented: $showMeshEdit, arrowEdge: .bottom) {
-                            MeshEditPopover(projectID: project.id).environment(store)
+                            MeshEditPopover(projectID: project.id, onSculpt: {
+                                showMeshEdit = false
+                                Task { sculpt = await store.beginSculpt(for: project.id) }
+                            }).environment(store)
                         }
                     }
                     Menu {

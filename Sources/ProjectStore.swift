@@ -581,16 +581,60 @@ final class ProjectStore {
             try? FileManager.default.removeItem(at: dst)
             return "The project no longer exists."
         }
+        appendEditedShape(from: base, id: newID, mesh: dst, summary: "\(edit.label) (\(result.note))", at: i)
+        return nil
+    }
+
+    /// Saves `mesh` as a new, selected shape version derived from `base`.
+    private func appendEditedShape(from base: Generation, id newID: UUID, mesh: URL,
+                                   summary: String, at i: Int) {
         let gen = Generation(id: newID, createdAt: Date(), modelRaw: base.modelRaw, quantRaw: base.quantRaw,
-                         steps: base.steps, removeBackground: base.removeBackground,
-                         meshFileName: dst.lastPathComponent, inputFileName: base.inputFileName,
-                         durationSeconds: nil, guidanceRaw: base.guidanceRaw, octreeRaw: base.octreeRaw,
-                         seedRaw: base.seedRaw, sourceFileName: base.sourceFileName,
-                         maskFileName: base.maskFileName,
-                         editSummary: "\(edit.label) (\(result.note))", editedFromID: base.id)
+                             steps: base.steps, removeBackground: base.removeBackground,
+                             meshFileName: mesh.lastPathComponent, inputFileName: base.inputFileName,
+                             durationSeconds: nil, guidanceRaw: base.guidanceRaw, octreeRaw: base.octreeRaw,
+                             seedRaw: base.seedRaw, sourceFileName: base.sourceFileName,
+                             maskFileName: base.maskFileName,
+                             editSummary: summary, editedFromID: base.id)
         projects[i].generations.append(gen)
         projects[i].selectedGenerationID = newID
         save()
+    }
+
+    /// Loads the selected shape (for a paint version, the shape it textured) for
+    /// sculpting. nil if it can't be read.
+    func beginSculpt(for id: Project.ID) async -> SculptController? {
+        guard let project = project(id), let url = shapeMeshURL(for: project) else { return nil }
+        let mesh = await Task.detached(priority: .userInitiated) { () -> SculptMesh? in
+            guard let raw = try? Data(contentsOf: url), let m = MeshDecimator.parse(raw),
+                  !m.faces.isEmpty else { return nil }
+            return SculptMesh(positions: m.positions, faces: m.faces)
+        }.value
+        guard let mesh else { return nil }
+        return SculptController(mesh: mesh)
+    }
+
+    /// Saves a finished sculpt as a new shape version. Returns an error message, or nil.
+    func commitSculpt(_ sculpt: SculptController, for id: Project.ID) async -> String? {
+        guard let project = project(id), let cur = project.currentGeneration else {
+            return "There's no shape to edit."
+        }
+        let baseID = cur.kind == .shape ? cur.id : cur.sourceShapeID
+        guard let base = project.generations.first(where: { $0.id == baseID }) else {
+            return "The source shape for this version is missing."
+        }
+        let newID = UUID()
+        let dst = folder(for: id).appendingPathComponent("gen_\(newID.uuidString).mesh")
+        let m = sculpt.mesh
+        let ok = await Task.detached(priority: .userInitiated) { () -> Bool in
+            let data = MeshDecimator.serialize(positions: m.positions, faces: m.faces)
+            return (try? data.write(to: dst, options: .atomic)) != nil
+        }.value
+        guard ok else { return "Couldn't save the sculpted mesh." }
+        guard let i = projects.firstIndex(where: { $0.id == id }) else {
+            try? FileManager.default.removeItem(at: dst)
+            return "The project no longer exists."
+        }
+        appendEditedShape(from: base, id: newID, mesh: dst, summary: "sculpted", at: i)
         return nil
     }
 

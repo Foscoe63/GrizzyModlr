@@ -16,6 +16,8 @@ enum ViewerContent: Equatable {
 struct MeshViewer: NSViewRepresentable {
     let content: ViewerContent?
     var onLoading: ((Bool) -> Void)? = nil    // true while async-loading content
+    /// When set, the viewer shows this editable mesh and left-drag sculpts it.
+    var sculpt: SculptController? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
     final class Coordinator {
@@ -24,8 +26,8 @@ struct MeshViewer: NSViewRepresentable {
         var lastFitRadius: CGFloat?
     }
 
-    func makeNSView(context: Context) -> SCNView {
-        let view = SCNView()
+    func makeNSView(context: Context) -> SculptSCNView {
+        let view = SculptSCNView()
         view.allowsCameraControl = true
         view.autoenablesDefaultLighting = true
         view.backgroundColor = .clear
@@ -60,7 +62,19 @@ struct MeshViewer: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ view: SCNView, context: Context) {
+    func updateNSView(_ view: SculptSCNView, context: Context) {
+        if let sculpt {
+            if view.controller !== sculpt, let container = container(in: view) {
+                view.attach(sculpt, container: container)
+                context.coordinator.loaded = nil        // reload the real content when sculpting ends
+                let c = sculpt.mesh.center
+                Self.fitCamera(view, center: SCNVector3(c.x, c.y, c.z), radius: CGFloat(sculpt.mesh.boundsRadius))
+                context.coordinator.lastFitCenter = nil
+                context.coordinator.lastFitRadius = nil
+            }
+            return
+        }
+        if view.controller != nil { view.detach() }
         if context.coordinator.loaded == content { return }
         context.coordinator.loaded = content
 

@@ -5,6 +5,7 @@ import SwiftUI
 struct MeshEditPopover: View {
     @Environment(ProjectStore.self) private var store
     let projectID: Project.ID
+    var onSculpt: () -> Void = {}
 
     @State private var targetK: Double = 50
     @State private var smoothIterations: Double = 3
