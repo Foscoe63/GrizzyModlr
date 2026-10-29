@@ -641,11 +641,12 @@ struct ProjectDetailView: View {
         panel.title = "Export \(format.ext.uppercased())"
         panel.begin { response in
             guard response == .OK, let dest = panel.url else { return }
+            let quads = ToolDefaults.exportQuads()
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
                     try MeshExporter.export(meshURL: meshURL, texture: texture,
                                             metallicRoughness: metallicRoughness,
-                                            format: format, to: dest)
+                                            format: format, quads: quads, to: dest)
                     DispatchQueue.main.async { NSWorkspace.shared.activateFileViewerSelecting([dest]) }
                 } catch {
                     DispatchQueue.main.async {

@@ -298,6 +298,7 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.paintHardness) private var paintHardness = ToolDefaults.fallbackPaintHardness
     @AppStorage(ToolDefaults.Key.paintOpacity) private var paintOpacity = ToolDefaults.fallbackPaintOpacity
     @AppStorage(ToolDefaults.Key.sceneSpacing) private var sceneSpacing = ToolDefaults.fallbackSceneSpacing
+    @AppStorage(ToolDefaults.Key.exportQuads) private var exportQuads = false
 
     var body: some View {
         Form {
@@ -344,6 +345,11 @@ struct ToolSettingsView: View {
                     slider($sceneSpacing, 1.5...6, step: 0.25, label: String(format: "%.2f units", sceneSpacing))
                 }
             }
+            Section("Export") {
+                Toggle("OBJ as quads where triangles pair cleanly", isOn: $exportQuads)
+                Text("Merges adjacent triangles into quads (best on remeshed models). GLB, STL and PLY stay triangles.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Brushes") {
                 LabeledContent("Sculpt size") { slider($sculptSize, 0.02...0.4, step: 0.01, label: String(format: "%.0f%%", sculptSize * 100)) }
                 LabeledContent("Sculpt strength") { slider($sculptStrength, 0.05...1, step: 0.05, label: String(format: "%.0f%%", sculptStrength * 100)) }
@@ -374,6 +380,7 @@ struct ToolSettingsView: View {
         sculptSize = ToolDefaults.fallbackSculptSize; sculptStrength = ToolDefaults.fallbackSculptStrength
         paintSize = ToolDefaults.fallbackPaintSize; paintHardness = ToolDefaults.fallbackPaintHardness
         paintOpacity = ToolDefaults.fallbackPaintOpacity; sceneSpacing = ToolDefaults.fallbackSceneSpacing
+        exportQuads = false
     }
 }
 

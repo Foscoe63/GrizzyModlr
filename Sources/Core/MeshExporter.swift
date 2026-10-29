@@ -62,8 +62,9 @@ enum MeshExporter {
     /// `format` to `dest`. OBJ additionally writes a companion `.mtl` and `.png`
     /// next to `dest`. `metallicRoughness` affects GLB only (§4.8: PBR GLB carries
     /// albedo + metallic-roughness); the other formats have no standard slot for it.
+    /// `quads` (OBJ only) merges adjacent triangles into quads where they pair cleanly.
     static func export(meshURL: URL, texture: URL?, metallicRoughness: URL? = nil,
-                       format: MeshExportFormat, to dest: URL) throws {
+                       format: MeshExportFormat, quads: Bool = false, to dest: URL) throws {
         let mesh = try read(meshURL: meshURL, textureURL: texture,
                             metallicRoughnessURL: metallicRoughness)
         switch format {
@@ -79,7 +80,7 @@ enum MeshExporter {
                 try png.write(to: dir.appendingPathComponent(textureName!))
             }
             let mtlName = textureName != nil ? base + ".mtl" : nil
-            let (objData, mtlData) = encodeOBJ(mesh, mtlName: mtlName, textureName: textureName)
+            let (objData, mtlData) = encodeOBJ(mesh, mtlName: mtlName, textureName: textureName, quads: quads)
             try objData.write(to: dest)
             if let mtlData, let mtlName {
                 try mtlData.write(to: dir.appendingPathComponent(mtlName))
@@ -172,7 +173,8 @@ enum MeshExporter {
 
     // MARK: - OBJ (+ MTL)
 
-    static func encodeOBJ(_ mesh: MeshData, mtlName: String?, textureName: String?) -> (obj: Data, mtl: Data?) {
+    static func encodeOBJ(_ mesh: MeshData, mtlName: String?, textureName: String?,
+                          quads: Bool = false) -> (obj: Data, mtl: Data?) {
         let hasUV = mesh.uvs != nil && textureName != nil
         var s = "# Modelr export\n"
         s.reserveCapacity(mesh.vertCount * 64 + mesh.faceCount * 40)
@@ -191,15 +193,20 @@ enum MeshExporter {
                 s += "vt \(uv[i*2]) \(1 - uv[i*2+1])\n"
             }
         }
-        for f in 0..<mesh.faceCount {
-            let a = Int(mesh.indices[f*3]) + 1
-            let b = Int(mesh.indices[f*3+1]) + 1
-            let c = Int(mesh.indices[f*3+2]) + 1
-            if hasUV {
-                s += "f \(a)/\(a)/\(a) \(b)/\(b)/\(b) \(c)/\(c)/\(c)\n"
-            } else {
-                s += "f \(a)//\(a) \(b)//\(b) \(c)//\(c)\n"
+        func corner(_ i: Int) -> String { hasUV ? "\(i)/\(i)/\(i)" : "\(i)//\(i)" }
+        var tris = (0..<mesh.faceCount).map {
+            SIMD3<UInt32>(mesh.indices[$0 * 3], mesh.indices[$0 * 3 + 1], mesh.indices[$0 * 3 + 2])
+        }
+        if quads {
+            let positions = (0..<mesh.vertCount).map { SIMD3<Float>(v[$0 * 3], v[$0 * 3 + 1], v[$0 * 3 + 2]) }
+            let paired = QuadPairing.pair(positions: positions, faces: tris)
+            for q in paired.quads {
+                s += "f \(corner(Int(q.x) + 1)) \(corner(Int(q.y) + 1)) \(corner(Int(q.z) + 1)) \(corner(Int(q.w) + 1))\n"
             }
+            tris = paired.triangles
+        }
+        for t in tris {
+            s += "f \(corner(Int(t.x) + 1)) \(corner(Int(t.y) + 1)) \(corner(Int(t.z) + 1))\n"
         }
 
         var mtl: Data? = nil

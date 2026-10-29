@@ -19,6 +19,7 @@ enum ToolDefaults {
         static let paintHardness = "tools.paintHardness"
         static let paintOpacity = "tools.paintOpacity"
         static let sceneSpacing = "tools.sceneSpacing"
+        static let exportQuads = "tools.exportQuads"
     }
 
     static let fallbackDecimateK = 50.0
@@ -50,6 +51,7 @@ enum ToolDefaults {
     static func paintHardness(_ d: UserDefaults = .standard) -> Double { double(Key.paintHardness, fallbackPaintHardness, d) }
     static func paintOpacity(_ d: UserDefaults = .standard) -> Double { double(Key.paintOpacity, fallbackPaintOpacity, d) }
     static func sceneSpacing(_ d: UserDefaults = .standard) -> Double { double(Key.sceneSpacing, fallbackSceneSpacing, d) }
+    static func exportQuads(_ d: UserDefaults = .standard) -> Bool { d.bool(forKey: Key.exportQuads) }
 
     static func symmetryAxis(_ d: UserDefaults = .standard) -> SymmetryAxis {
         SymmetryAxis(rawValue: d.string(forKey: Key.symmetryAxis) ?? fallbackSymmetryAxis) ?? .x
