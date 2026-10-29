@@ -428,6 +428,8 @@ struct Generation: Identifiable, Codable, Hashable {
     var paintFacesRaw: Int? = nil
     var paintSuperresRaw: Bool? = nil
     var paintSeedRaw: UInt64? = nil     // the seed this paint run actually used
+    var editSummary: String? = nil      // for a mesh-edit version: what was done (e.g. "smoothed ×3")
+    var editedFromID: UUID? = nil       // the version this edit was derived from
 
     var kind: GenerationKind { GenerationKind(rawValue: kindRaw ?? "shape") ?? .shape }
     var isPainted: Bool { kind == .paint }

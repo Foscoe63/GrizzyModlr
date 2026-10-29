@@ -556,6 +556,100 @@ final class ProjectStore {
         return nil
     }
 
+    /// Applies a mesh edit to the selected shape (for a paint version, the shape it
+    /// textured) and saves the result as a new, selected shape version. The heavy work
+    /// runs off the main actor. Returns a user-facing message: nil on success.
+    func applyMeshEdit(_ edit: MeshEdit, for id: Project.ID) async -> String? {
+        guard let project = project(id), let cur = project.currentGeneration else {
+            return "There's no shape to edit."
+        }
+        let baseID = cur.kind == .shape ? cur.id : cur.sourceShapeID
+        guard let base = project.generations.first(where: { $0.id == baseID }) else {
+            return "The source shape for this version is missing."
+        }
+        let dir = folder(for: id)
+        let src = dir.appendingPathComponent(base.meshFileName)
+        guard FileManager.default.fileExists(atPath: src.path) else { return "The shape mesh is missing." }
+        let newID = UUID()
+        let dst = dir.appendingPathComponent("gen_\(newID.uuidString).mesh")
+        let result = await Task.detached(priority: .userInitiated) {
+            MeshOps.applyToFile(edit, from: src, to: dst)
+        }.value
+        guard let result else { return "Couldn't apply the edit to this mesh." }
+        guard result.changed else { return "Nothing to change: \(result.note)." }
+        guard let i = projects.firstIndex(where: { $0.id == id }) else {
+            try? FileManager.default.removeItem(at: dst)
+            return "The project no longer exists."
+        }
+        let gen = Generation(id: newID, createdAt: Date(), modelRaw: base.modelRaw, quantRaw: base.quantRaw,
+                         steps: base.steps, removeBackground: base.removeBackground,
+                         meshFileName: dst.lastPathComponent, inputFileName: base.inputFileName,
+                         durationSeconds: nil, guidanceRaw: base.guidanceRaw, octreeRaw: base.octreeRaw,
+                         seedRaw: base.seedRaw, sourceFileName: base.sourceFileName,
+                         maskFileName: base.maskFileName,
+                         editSummary: "\(edit.label) (\(result.note))", editedFromID: base.id)
+        projects[i].generations.append(gen)
+        projects[i].selectedGenerationID = newID
+        save()
+        return nil
+    }
+
+    /// Applies global material adjustments to the selected paint version and saves them
+    /// as a new paint version. The mesh is shared with the source version; only the
+    /// albedo (and, for PBR, the metallic-roughness map) are rewritten.
+    func applyMaterialEdit(_ adj: MaterialAdjustments, for id: Project.ID) async -> String? {
+        guard let project = project(id), let base = project.currentGeneration,
+              base.kind == .paint, let albedoName = base.paintedTextureFileName else {
+            return "Select a painted version to edit its material."
+        }
+        if adj.isIdentity { return "Nothing to change." }
+        let dir = folder(for: id)
+        let newID = UUID()
+        let albedoSrc = dir.appendingPathComponent(albedoName)
+        let albedoDst = dir.appendingPathComponent("painted_\(newID.uuidString)_albedo.png")
+        let mrSrc = base.paintedMRFileName.map { dir.appendingPathComponent($0) }
+        let mrDst = mrSrc == nil ? nil : dir.appendingPathComponent("painted_\(newID.uuidString)_mr.png")
+        let ok = await Task.detached(priority: .userInitiated) { () -> Bool in
+            if adj.altersAlbedo || mrSrc == nil || !adj.altersMR {
+                guard MaterialOps.processFile(albedoSrc, to: albedoDst, isMR: false, adj) else { return false }
+            } else {
+                guard (try? FileManager.default.copyItem(at: albedoSrc, to: albedoDst)) != nil else { return false }
+            }
+            if let mrSrc, let mrDst {
+                guard MaterialOps.processFile(mrSrc, to: mrDst, isMR: true, adj) else { return false }
+            }
+            return true
+        }.value
+        guard ok else {
+            try? FileManager.default.removeItem(at: albedoDst)
+            if let mrDst { try? FileManager.default.removeItem(at: mrDst) }
+            return "Couldn't read this version's textures."
+        }
+        guard let i = projects.firstIndex(where: { $0.id == id }) else {
+            try? FileManager.default.removeItem(at: albedoDst)
+            if let mrDst { try? FileManager.default.removeItem(at: mrDst) }
+            return "The project no longer exists."
+        }
+        let gen = Generation(id: newID, createdAt: Date(), modelRaw: base.modelRaw, quantRaw: base.quantRaw,
+                         steps: base.steps, removeBackground: base.removeBackground,
+                         meshFileName: base.meshFileName, inputFileName: base.inputFileName,
+                         durationSeconds: nil, guidanceRaw: base.guidanceRaw, octreeRaw: base.octreeRaw,
+                         seedRaw: base.seedRaw, sourceFileName: base.sourceFileName,
+                         maskFileName: base.maskFileName,
+                         paintedTextureFileName: albedoDst.lastPathComponent,
+                         paintedMRFileName: mrDst?.lastPathComponent,
+                         kindRaw: "paint", sourceShapeID: base.sourceShapeID,
+                         paintModelRaw: base.paintModelRaw, paintResRaw: base.paintResRaw,
+                         paintStepsRaw: base.paintStepsRaw, paintTexRaw: base.paintTexRaw,
+                         paintFacesRaw: base.paintFacesRaw, paintSuperresRaw: base.paintSuperresRaw,
+                         paintSeedRaw: base.paintSeedRaw,
+                         editSummary: "material: \(adj.summary)", editedFromID: base.id)
+        projects[i].generations.append(gen)
+        projects[i].selectedGenerationID = newID
+        save()
+        return nil
+    }
+
     /// Drop a staged run's files (cancelled / failed) so they don't accumulate.
     func discardShapeRun(_ staged: StagedShapeRun) {
         for url in [staged.mesh, staged.input, staged.source, staged.mask].compactMap({ $0 }) {

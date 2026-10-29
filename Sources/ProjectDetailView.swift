@@ -12,6 +12,8 @@ struct ProjectDetailView: View {
     @State private var objectLoading = false
     @State private var showSettings = false
     @State private var showHistory = false
+    @State private var showMeshEdit = false
+    @State private var showMaterialEdit = false
     @State private var showPaintSettings = false
     @State private var editorInputs: MaskEditorInputs?
 
@@ -143,6 +145,30 @@ struct ProjectDetailView: View {
             paintStatusOverlay
             exportOverlay(meshURL: paintExportSource?.mesh, texture: paintExportSource?.texture,
                           metallicRoughness: paintExportSource?.mr)
+            if paintExportSource != nil {
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button { showMaterialEdit = true } label: {
+                            Image(systemName: "paintpalette")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .frame(width: 28, height: 28)
+                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Edit material: brightness, saturation, hue, roughness, metalness")
+                        .popover(isPresented: $showMaterialEdit, arrowEdge: .bottom) {
+                            MaterialEditPopover(projectID: project.id).environment(store)
+                        }
+                        Color.clear.frame(width: 28 + 8, height: 28)   // clear the export button
+                    }
+                    Spacer()
+                }
+                .padding(10)
+            }
         }
     }
 
@@ -424,7 +450,7 @@ struct ProjectDetailView: View {
             }
             statusOverlay
             exportOverlay(meshURL: shapeJob.isRunning ? nil : store.shapeMeshURL(for: project),
-                          texture: nil)
+                          texture: nil, editable: !shapeJob.isRunning)
         }
     }
 
@@ -454,11 +480,28 @@ struct ProjectDetailView: View {
     /// A floating export menu in the top-right of a viewport. Renders only when there's
     /// a finished mesh to export. `texture` non-nil ⇒ GLB/OBJ embed the painted texture.
     @ViewBuilder
-    private func exportOverlay(meshURL: URL?, texture: URL?, metallicRoughness: URL? = nil) -> some View {
+    private func exportOverlay(meshURL: URL?, texture: URL?, metallicRoughness: URL? = nil,
+                               editable: Bool = false) -> some View {
         if let meshURL {
             VStack {
                 HStack {
                     Spacer()
+                    if editable {
+                        Button { showMeshEdit = true } label: {
+                            Image(systemName: "wand.and.stars")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .frame(width: 28, height: 28)
+                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Edit mesh: decimate, smooth, fill holes")
+                        .popover(isPresented: $showMeshEdit, arrowEdge: .bottom) {
+                            MeshEditPopover(projectID: project.id).environment(store)
+                        }
+                    }
                     Menu {
                         ForEach(MeshExportFormat.allCases) { fmt in
                             Button {

@@ -110,8 +110,10 @@ struct VersionHistoryView: View {
     /// Metadata line; the default Full quant is omitted (it's the boring case).
     private func metaLine(_ gen: Generation) -> String {
         if gen.kind == .paint {
+            if let edit = gen.editSummary { return "Edited · \(edit)" }
             return "Textured · \(gen.paintStepsRaw ?? 0) steps · \(gen.paintResRaw ?? 0)px"
         }
+        if let edit = gen.editSummary { return "Edited · \(edit)" }
         return gen.quantization == .full
             ? "\(gen.steps) steps"
             : "\(gen.quantization.label) · \(gen.steps) steps"
