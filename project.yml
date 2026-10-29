@@ -74,6 +74,7 @@ targets:
       - Sources/MeshViewer.swift
       - Sources/SculptView.swift
       - Sources/TexturePaintController.swift
+      - Sources/UVEditorView.swift
       - Sources/BackgroundRemover.swift
     settings:
       base:

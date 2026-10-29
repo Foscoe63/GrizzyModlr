@@ -56,3 +56,56 @@ final class BooleanStoreTests: XCTestCase {
         XCTAssertEqual(store.project(id)?.generations.count, 1)
     }
 }
+
+/// UV edit through the store: UVs move, texture re-maps, and a new paint version results.
+@MainActor
+final class UVEditStoreTests: XCTestCase {
+    private var root: URL!
+    private var store: ProjectStore!
+    private static let tinyPNG = Data(base64Encoded:
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")!
+
+    override func setUpWithError() throws {
+        root = FileManager.default.temporaryDirectory.appendingPathComponent("uv-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        store = ProjectStore(rootDir: root)
+    }
+    override func tearDownWithError() throws { try? FileManager.default.removeItem(at: root) }
+
+    func testApplyUVEditCreatesNewPaintVersionWithMovedUVs() async throws {
+        // Project with a committed shape, then a hand-built paint version (mesh + albedo).
+        let p = store.newProject()
+        let img = root.appendingPathComponent("in.png")
+        try Self.tinyPNG.write(to: img)
+        store.setImage(fromURL: img, for: p.id)
+        let shape = try store.stageShapeRun(for: p.id)
+        try Data(repeating: 7, count: 64).write(to: shape.mesh)
+        XCTAssertNil(store.commitShapeRun(shape))
+        store.setPaintModel(.small, for: p.id)
+        let paint = try store.stagePaintRun(for: p.id)
+
+        let mesh = TexturedMesh(
+            positions: [[0,0,0],[1,0,0],[1,1,0],[0,1,0]], normals: Array(repeating: [0,0,1], count: 4),
+            uvs: [[0.1,0.1],[0.4,0.1],[0.4,0.4],[0.1,0.4]], faces: [[0,1,2],[0,2,3]])
+        try mesh.serialize().write(to: paint.outMesh)
+        let canvas = TextureCanvas(width: 64, height: 64, pixels: [UInt8](repeating: 200, count: 64 * 64 * 4))
+        XCTAssertTrue(canvas.write(to: paint.outTexture))
+        XCTAssertNil(store.commitPaintRun(paint))
+
+        let before = try XCTUnwrap(store.project(p.id)).generations.count
+        let err = await store.applyUVEdit([0: IslandTransform(du: 0.5, dv: 0.5)], for: p.id)
+        XCTAssertNil(err)
+        let proj = try XCTUnwrap(store.project(p.id))
+        XCTAssertEqual(proj.generations.count, before + 1)
+        let gen = try XCTUnwrap(proj.currentGeneration)
+        XCTAssertEqual(gen.editSummary, "UV layout edited")
+        guard case .texturedMesh(let meshURL, _)? = store.currentViewerContent(for: proj) else {
+            return XCTFail("expected a textured version")
+        }
+        let newMesh = try XCTUnwrap(TexturedMesh.parse(Data(contentsOf: meshURL)))
+        XCTAssertEqual(newMesh.uvs[0].x, 0.6, accuracy: 1e-5)
+
+        let leave = await store.applyUVEdit([0: IslandTransform(du: 5)], for: p.id)
+        XCTAssertEqual(leave, "An island would leave the texture.")
+    }
+}

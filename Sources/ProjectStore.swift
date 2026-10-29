@@ -887,6 +887,68 @@ final class ProjectStore {
         return nil
     }
 
+    /// Loads what the UV editor needs for the selected painted version.
+    func uvEditorModel(for id: Project.ID) async -> UVEditorModel? {
+        guard let project = project(id), let gen = project.currentGeneration, gen.kind == .paint,
+              let texName = gen.paintedTextureFileName else { return nil }
+        let dir = folder(for: id)
+        let meshURL = dir.appendingPathComponent(gen.meshFileName)
+        let mesh = await Task.detached(priority: .userInitiated) { () -> TexturedMesh? in
+            (try? Data(contentsOf: meshURL)).flatMap(TexturedMesh.parse)
+        }.value
+        guard let mesh else { return nil }
+        return UVEditorModel(mesh: mesh, albedo: dir.appendingPathComponent(texName))
+    }
+
+    /// Moves / scales / rotates UV islands of the selected painted version, re-maps the
+    /// albedo (and metallic-roughness map) to match, and saves a new paint version.
+    func applyUVEdit(_ transforms: [Int: IslandTransform], for id: Project.ID) async -> String? {
+        guard let project = project(id), let base = project.currentGeneration, base.kind == .paint,
+              let albedoName = base.paintedTextureFileName else { return "Select a painted version to edit." }
+        let dir = folder(for: id)
+        let newID = UUID()
+        let meshSrc = dir.appendingPathComponent(base.meshFileName)
+        let meshDst = dir.appendingPathComponent("painted_\(newID.uuidString).tmesh")
+        let albedoSrc = dir.appendingPathComponent(albedoName)
+        let albedoDst = dir.appendingPathComponent("painted_\(newID.uuidString)_albedo.png")
+        let mrSrc = base.paintedMRFileName.map { dir.appendingPathComponent($0) }
+        let mrDst = mrSrc == nil ? nil : dir.appendingPathComponent("painted_\(newID.uuidString)_mr.png")
+        let failure = await Task.detached(priority: .userInitiated) { () -> String? in
+            guard var mesh = (try? Data(contentsOf: meshSrc)).flatMap(TexturedMesh.parse) else {
+                return "The painted mesh couldn't be read."
+            }
+            let islands = UVLayout.islands(faces: mesh.faces, uvs: mesh.uvs)
+            let changed = Set(transforms.filter { !$0.value.isIdentity }.keys)
+            guard !changed.isEmpty else { return "Nothing to change." }
+            let newUVs = UVLayout.apply(transforms, islands: islands, to: mesh.uvs)
+            if UVLayout.leavesUnitSquare(newUVs, islands: islands, changed: changed) {
+                return "An island would leave the texture."
+            }
+            let faceIDs = islands.filter { changed.contains($0.id) }.flatMap(\.faces)
+            func remapFile(_ src: URL, _ dst: URL) -> Bool {
+                guard let canvas = TextureCanvas.load(src) else { return false }
+                let out = UVLayout.remap(canvas, faces: mesh.faces, faceIDs: faceIDs,
+                                         oldUVs: mesh.uvs, newUVs: newUVs)
+                return out.write(to: dst)
+            }
+            guard remapFile(albedoSrc, albedoDst) else { return "Couldn't re-map the texture." }
+            if let mrSrc, let mrDst, !remapFile(mrSrc, mrDst) { return "Couldn't re-map the material map." }
+            mesh.uvs = newUVs
+            guard (try? mesh.serialize().write(to: meshDst, options: .atomic)) != nil else {
+                return "Couldn't save the mesh."
+            }
+            return nil
+        }.value
+        func cleanup() {
+            for u in [meshDst, albedoDst, mrDst].compactMap({ $0 }) { try? FileManager.default.removeItem(at: u) }
+        }
+        if let failure { cleanup(); return failure }
+        guard let i = projects.firstIndex(where: { $0.id == id }) else { cleanup(); return "The project no longer exists." }
+        appendEditedPaint(from: base, id: newID, albedo: albedoDst, mr: mrDst?.lastPathComponent,
+                          mesh: meshDst.lastPathComponent, summary: "UV layout edited", at: i)
+        return nil
+    }
+
     /// Saves a new paint version derived from `base` with the given files.
     private func appendEditedPaint(from base: Generation, id newID: UUID, albedo: URL, mr: String?,
                                    mesh: String, summary: String, at i: Int) {

@@ -17,6 +17,7 @@ struct ProjectDetailView: View {
     @State private var sculptBusy = false
     @State private var texturePaint: TexturePaintController?
     @State private var paintBusy = false
+    @State private var uvEditor: UVEditorModel?
     @State private var showMaterialEdit = false
     @State private var showPaintSettings = false
     @State private var editorInputs: MaskEditorInputs?
@@ -204,6 +205,23 @@ struct ProjectDetailView: View {
                         .buttonStyle(.plain)
                         .disabled(texturePaint != nil)
                         .help("Paint on the texture")
+                        Button { Task { uvEditor = await store.uvEditorModel(for: project.id) } } label: {
+                            Image(systemName: "square.grid.3x3.topleft.filled")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .frame(width: 28, height: 28)
+                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Edit the UV layout")
+                        .sheet(isPresented: Binding(get: { uvEditor != nil }, set: { if !$0 { uvEditor = nil } })) {
+                            if let m = uvEditor {
+                                UVEditorView(model: m, projectID: project.id, onClose: { uvEditor = nil })
+                                    .environment(store)
+                            }
+                        }
                         Color.clear.frame(width: 28 + 8, height: 28)   // clear the export button
                     }
                     Spacer()
