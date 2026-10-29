@@ -86,3 +86,89 @@ final class MeshOpsTests: XCTestCase {
         XCTAssertEqual(out?.faces.count, f.count + 4)
     }
 }
+
+final class TopologyOpsTests: XCTestCase {
+    /// UV sphere (outward winding).
+    private func sphere(center: SIMD3<Float> = .zero, radius: Float = 1, seg: Int = 24) -> ([SIMD3<Float>], [SIMD3<UInt32>]) {
+        var p: [SIMD3<Float>] = [center + [0, radius, 0]]
+        for i in 1..<seg {
+            let phi = Float.pi * Float(i) / Float(seg)
+            for j in 0..<(seg * 2) {
+                let th = 2 * Float.pi * Float(j) / Float(seg * 2)
+                p.append(center + radius * SIMD3(sin(phi) * cos(th), cos(phi), sin(phi) * sin(th)))
+            }
+        }
+        p.append(center + [0, -radius, 0])
+        let ring = seg * 2
+        var f: [SIMD3<UInt32>] = []
+        for j in 0..<ring { f.append([0, UInt32(1 + (j + 1) % ring), UInt32(1 + j)]) }
+        for i in 0..<(seg - 2) { for j in 0..<ring {
+            let a = UInt32(1 + i * ring + j), b = UInt32(1 + i * ring + (j + 1) % ring)
+            let c = UInt32(1 + (i + 1) * ring + j), d = UInt32(1 + (i + 1) * ring + (j + 1) % ring)
+            f.append([a, b, c]); f.append([b, d, c])
+        } }
+        let last = UInt32(p.count - 1), base = UInt32(1 + (seg - 2) * ring)
+        for j in 0..<ring { f.append([last, base + UInt32(j), base + UInt32((j + 1) % ring)]) }
+        return (p, f)
+    }
+
+    private func volume(_ p: [SIMD3<Float>], _ f: [SIMD3<UInt32>]) -> Float {
+        f.reduce(0) { $0 + simd_dot(p[Int($1.x)], simd_cross(p[Int($1.y)], p[Int($1.z)])) / 6 }
+    }
+    private func boundaryEdges(_ faces: [SIMD3<UInt32>]) -> Int {
+        var dir = Set<UInt64>()
+        for f in faces { let v = [f.x, f.y, f.z]; for k in 0..<3 { dir.insert(UInt64(v[k]) << 32 | UInt64(v[(k + 1) % 3])) } }
+        return dir.filter { !dir.contains(($0 & 0xFFFF_FFFF) << 32 | ($0 >> 32)) }.count
+    }
+    private func extent(_ p: [SIMD3<Float>], _ a: Int) -> (Float, Float) { (p.map { $0[a] }.min()!, p.map { $0[a] }.max()!) }
+
+    /// A sphere whose +x half is shoved sideways in z — asymmetric, but the x extent (and so
+    /// the mirror plane at the bounding-box center, x = 0) is unchanged.
+    private func lopsided() -> ([SIMD3<Float>], [SIMD3<UInt32>]) {
+        var (p, f) = sphere()
+        for i in p.indices where p[i].x > 0.3 { p[i].z += 0.25 }
+        return (p, f)
+    }
+
+    func testSymmetrizeKeepNegativeDropsTheLopsidedHalfAndStaysClosed() throws {
+        let (p, f) = lopsided()
+        let r = try XCTUnwrap(MeshOps.symmetrize(positions: p, faces: f, axis: 0, keepPositive: false))   // keep −x half
+        let (lo, hi) = extent(r.positions, 0)
+        XCTAssertLessThan(abs(hi + lo), 0.02)                      // symmetric about x = 0
+        XCTAssertLessThan(extent(r.positions, 2).1, 1.02)          // the shoved +x half is gone
+        XCTAssertEqual(boundaryEdges(r.faces), 0)
+        XCTAssertGreaterThan(volume(r.positions, r.faces), 3.5)    // ~ a sphere's 4.19, not a shell
+    }
+
+    func testSymmetrizeKeepPositiveMirrorsTheLopsidedHalf() throws {
+        let (p, f) = lopsided()
+        let r = try XCTUnwrap(MeshOps.symmetrize(positions: p, faces: f, axis: 0, keepPositive: true))
+        let (lo, hi) = extent(r.positions, 0)
+        XCTAssertLessThan(abs(hi + lo), 0.02)
+        XCTAssertGreaterThan(extent(r.positions, 2).1, 1.1)        // the z shove now appears on both sides
+        XCTAssertEqual(boundaryEdges(r.faces), 0)
+    }
+
+    func testSymmetrizeIsIdempotentOnASymmetricMesh() throws {
+        let (p, f) = sphere()
+        let r = try XCTUnwrap(MeshOps.symmetrize(positions: p, faces: f, axis: 1, keepPositive: true))
+        XCTAssertLessThan(abs(volume(r.positions, r.faces) - volume(p, f)) / volume(p, f), 0.03)
+        XCTAssertEqual(boundaryEdges(r.faces), 0)
+    }
+
+    func testRemeshKeepsVolumeAndIsClosed() throws {
+        let (p, f) = sphere()
+        let r = try XCTUnwrap(MeshBoolean.remesh(positions: p, faces: f, resolution: 48))
+        XCTAssertEqual(boundaryEdges(r.faces), 0)
+        let v = volume(r.positions, r.faces), ref = Float(4.0 / 3.0 * .pi)
+        XCTAssertLessThan(abs(v - ref) / ref, 0.08)
+        XCTAssertTrue(r.positions.allSatisfy { $0.x.isFinite && $0.y.isFinite && $0.z.isFinite })
+    }
+
+    func testApplyDispatchesNewEdits() {
+        let (p, f) = sphere()
+        XCTAssertTrue(MeshOps.apply(.symmetrize(axis: .z, keepPositive: true), positions: p, faces: f).changed)
+        XCTAssertTrue(MeshOps.apply(.remesh(resolution: 32), positions: p, faces: f).changed)
+        XCTAssertEqual(MeshEdit.symmetrize(axis: .x, keepPositive: false).label, "mirrored −X half")
+    }
+}

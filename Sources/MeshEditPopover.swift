@@ -7,9 +7,13 @@ struct MeshEditPopover: View {
     let projectID: Project.ID
     var onSculpt: () -> Void = {}
 
-    @State private var targetK: Double = 50
-    @State private var smoothIterations: Double = 3
-    @State private var holeEdges: Double = 64
+    @State private var targetK: Double = ToolDefaults.decimateK()
+    @State private var smoothIterations: Double = ToolDefaults.smoothIterations()
+    @State private var holeEdges: Double = ToolDefaults.holeEdges()
+    @State private var symmetryAxis: SymmetryAxis = ToolDefaults.symmetryAxis()
+    @State private var symmetryKeepPositive: Bool = ToolDefaults.symmetryKeepPositive()
+    @State private var remeshRes: Double = ToolDefaults.remeshResolution()
+    @State private var lodText: String = UserDefaults.standard.string(forKey: ToolDefaults.Key.lodLevels) ?? ToolDefaults.fallbackLODLevels
     @State private var busy = false
     @State private var booleanOp: BooleanOp = .subtract
     @State private var operandChoice = "sphere"          // a BooleanPrimitive raw value or a version UUID
@@ -17,10 +21,15 @@ struct MeshEditPopover: View {
     @State private var offsetX: Double = 0
     @State private var offsetY: Double = 0.6
     @State private var offsetZ: Double = 0
-    @State private var booleanRes: Double = 160
+    @State private var booleanRes: Double = ToolDefaults.booleanResolution()
     @State private var message: String?
 
     var body: some View {
+        ScrollView { content }
+            .frame(width: 290, height: 600)
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Edit mesh").font(.headline)
 
@@ -42,6 +51,9 @@ struct MeshEditPopover: View {
             }
 
             Divider()
+            topologySection
+
+            Divider()
             combineSection
 
             if busy { ProgressView().controlSize(.small) }
@@ -52,7 +64,7 @@ struct MeshEditPopover: View {
                 .font(.caption2).foregroundStyle(.tertiary)
         }
         .padding(14)
-        .frame(width: 270)
+        .frame(width: 290, alignment: .leading)
         .disabled(busy)
     }
 
@@ -143,6 +155,51 @@ extension MeshEditPopover {
         HStack(spacing: 8) {
             Text(title).font(.caption).frame(width: 30, alignment: .leading)
             Slider(value: value, in: range)
+        }
+    }
+}
+
+extension MeshEditPopover {
+    @ViewBuilder
+    fileprivate var topologySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Topology").font(.callout.weight(.medium))
+            HStack {
+                Picker("Axis", selection: $symmetryAxis) {
+                    ForEach(SymmetryAxis.allCases) { Text($0.rawValue.uppercased()).tag($0) }
+                }
+                .pickerStyle(.segmented).labelsHidden().frame(width: 100)
+                Picker("Keep", selection: $symmetryKeepPositive) {
+                    Text("+ half").tag(true); Text("− half").tag(false)
+                }
+                .pickerStyle(.segmented).labelsHidden()
+            }
+            action("Make symmetric", "arrow.left.and.right.righttriangle.left.righttriangle.right") {
+                .symmetrize(axis: symmetryAxis, keepPositive: symmetryKeepPositive)
+            }
+            HStack {
+                Text("Remesh").font(.caption)
+                Spacer()
+                Text("\(Int(remeshRes)) voxels").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            }
+            Slider(value: $remeshRes, in: 48...320, step: 16)
+            action("Remesh evenly", "square.grid.3x3") { .remesh(resolution: Int(remeshRes)) }
+            HStack(spacing: 6) {
+                Text("LOD").font(.caption)
+                TextField("50, 25, 10", text: $lodText).textFieldStyle(.roundedBorder).controlSize(.small)
+                Text("%").font(.caption).foregroundStyle(.secondary)
+            }
+            Button {
+                busy = true; message = nil
+                let levels = ToolDefaults.parseLODLevels(lodText)
+                Task {
+                    let result = await store.applyLODs(percents: levels, for: projectID)
+                    busy = false
+                    message = result ?? "Saved \(levels.count) LOD version\(levels.count == 1 ? "" : "s")."
+                }
+            } label: { Label("Generate LODs", systemImage: "square.stack.3d.down.right").frame(maxWidth: .infinity) }
+            Text("Symmetry mirrors across the model's center. Remesh needs a closed shape and loses detail below a voxel.")
+                .font(.caption2).foregroundStyle(.tertiary)
         }
     }
 }

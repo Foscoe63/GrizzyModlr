@@ -10,9 +10,9 @@ final class TexturePaintController {
     var tool: PaintTool = .paint
     var color: Color = .red
     /// Brush radius as a fraction of the model's bounding radius.
-    var radiusFraction: Double = 0.05
-    var hardness: Double = 0.6
-    var opacity: Double = 1
+    var radiusFraction: Double = ToolDefaults.paintSize()
+    var hardness: Double = ToolDefaults.paintHardness()
+    var opacity: Double = ToolDefaults.paintOpacity()
     private(set) var revision = 0
 
     init(canvas: TextureCanvas, mesh: TexturedMesh) {

@@ -7,6 +7,8 @@ struct SettingsView: View {
         TabView {
             ModelManagerView()
                 .tabItem { Label("Models", systemImage: "square.stack.3d.up") }
+            ToolSettingsView()
+                .tabItem { Label("Tools", systemImage: "wand.and.stars") }
         }
         .frame(width: 560)
     }
@@ -274,5 +276,95 @@ private struct ModelLocationSection: View {
         panel.canChooseDirectories = true; panel.canChooseFiles = false
         panel.canCreateDirectories = true; panel.allowsMultipleSelection = false
         return panel.runModal() == .OK ? panel.url : nil
+    }
+}
+
+/// Settings → Tools: starting values for the editing tools. Each tool opens with these and
+/// you can still adjust them per use in the tool's own panel.
+struct ToolSettingsView: View {
+    @AppStorage(ToolDefaults.Key.decimateK) private var decimateK = ToolDefaults.fallbackDecimateK
+    @AppStorage(ToolDefaults.Key.smoothIterations) private var smoothIterations = ToolDefaults.fallbackSmoothIterations
+    @AppStorage(ToolDefaults.Key.holeEdges) private var holeEdges = ToolDefaults.fallbackHoleEdges
+    @AppStorage(ToolDefaults.Key.booleanResolution) private var booleanResolution = ToolDefaults.fallbackBooleanResolution
+    @AppStorage(ToolDefaults.Key.remeshResolution) private var remeshResolution = ToolDefaults.fallbackRemeshResolution
+    @AppStorage(ToolDefaults.Key.symmetryAxis) private var symmetryAxis = ToolDefaults.fallbackSymmetryAxis
+    @AppStorage(ToolDefaults.Key.symmetryKeepPositive) private var keepPositive = true
+    @AppStorage(ToolDefaults.Key.lodLevels) private var lodLevels = ToolDefaults.fallbackLODLevels
+    @AppStorage(ToolDefaults.Key.sculptSize) private var sculptSize = ToolDefaults.fallbackSculptSize
+    @AppStorage(ToolDefaults.Key.sculptStrength) private var sculptStrength = ToolDefaults.fallbackSculptStrength
+    @AppStorage(ToolDefaults.Key.paintSize) private var paintSize = ToolDefaults.fallbackPaintSize
+    @AppStorage(ToolDefaults.Key.paintHardness) private var paintHardness = ToolDefaults.fallbackPaintHardness
+    @AppStorage(ToolDefaults.Key.paintOpacity) private var paintOpacity = ToolDefaults.fallbackPaintOpacity
+
+    var body: some View {
+        Form {
+            Section("Mesh editing") {
+                LabeledContent("Decimate target") {
+                    slider($decimateK, 5...400, step: 5, label: "\(Int(decimateK))k triangles")
+                }
+                LabeledContent("Smoothing") {
+                    slider($smoothIterations, 1...20, step: 1, label: "\(Int(smoothIterations)) iterations")
+                }
+                LabeledContent("Fill holes up to") {
+                    slider($holeEdges, 4...256, step: 4, label: "\(Int(holeEdges)) edges")
+                }
+            }
+            Section("Topology") {
+                Picker("Symmetry axis", selection: $symmetryAxis) {
+                    ForEach(SymmetryAxis.allCases) { Text($0.rawValue.uppercased()).tag($0.rawValue) }
+                }
+                .pickerStyle(.segmented)
+                Picker("Keep", selection: $keepPositive) {
+                    Text("Positive half").tag(true); Text("Negative half").tag(false)
+                }
+                .pickerStyle(.segmented)
+                LabeledContent("Remesh detail") {
+                    slider($remeshResolution, 48...320, step: 16, label: "\(Int(remeshResolution)) voxels")
+                }
+                LabeledContent("LOD levels") {
+                    HStack {
+                        TextField("LOD levels", text: $lodLevels, prompt: Text("50, 25, 10")).labelsHidden().textFieldStyle(.roundedBorder).frame(width: 120)
+                        Text("% of triangles").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if ToolDefaults.parseLODLevels(lodLevels).isEmpty {
+                    Text("No valid levels — the default (50, 25, 10) is used.").font(.caption).foregroundStyle(.orange)
+                }
+            }
+            Section("Combine") {
+                LabeledContent("Boolean detail") {
+                    slider($booleanResolution, 64...256, step: 16, label: "\(Int(booleanResolution)) voxels")
+                }
+            }
+            Section("Brushes") {
+                LabeledContent("Sculpt size") { slider($sculptSize, 0.02...0.4, step: 0.01, label: String(format: "%.0f%%", sculptSize * 100)) }
+                LabeledContent("Sculpt strength") { slider($sculptStrength, 0.05...1, step: 0.05, label: String(format: "%.0f%%", sculptStrength * 100)) }
+                LabeledContent("Paint size") { slider($paintSize, 0.01...0.2, step: 0.01, label: String(format: "%.0f%%", paintSize * 100)) }
+                LabeledContent("Paint hardness") { slider($paintHardness, 0...1, step: 0.05, label: String(format: "%.0f%%", paintHardness * 100)) }
+                LabeledContent("Paint opacity") { slider($paintOpacity, 0.05...1, step: 0.05, label: String(format: "%.0f%%", paintOpacity * 100)) }
+            }
+            Section {
+                Button("Reset to defaults") { reset() }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(height: 560)
+    }
+
+    private func slider(_ value: Binding<Double>, _ range: ClosedRange<Double>, step: Double, label: String) -> some View {
+        HStack {
+            Slider(value: value, in: range, step: step).frame(width: 170)
+            Text(label).font(.caption).foregroundStyle(.secondary).monospacedDigit().frame(width: 100, alignment: .trailing)
+        }
+    }
+
+    private func reset() {
+        decimateK = ToolDefaults.fallbackDecimateK; smoothIterations = ToolDefaults.fallbackSmoothIterations
+        holeEdges = ToolDefaults.fallbackHoleEdges; booleanResolution = ToolDefaults.fallbackBooleanResolution
+        remeshResolution = ToolDefaults.fallbackRemeshResolution; symmetryAxis = ToolDefaults.fallbackSymmetryAxis
+        keepPositive = true; lodLevels = ToolDefaults.fallbackLODLevels
+        sculptSize = ToolDefaults.fallbackSculptSize; sculptStrength = ToolDefaults.fallbackSculptStrength
+        paintSize = ToolDefaults.fallbackPaintSize; paintHardness = ToolDefaults.fallbackPaintHardness
+        paintOpacity = ToolDefaults.fallbackPaintOpacity
     }
 }

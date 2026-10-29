@@ -109,3 +109,59 @@ final class UVEditStoreTests: XCTestCase {
         XCTAssertEqual(leave, "An island would leave the texture.")
     }
 }
+
+/// Topology tools through the store: LOD sets and symmetry become new shape versions.
+@MainActor
+final class TopologyStoreTests: XCTestCase {
+    private var root: URL!
+    private var store: ProjectStore!
+    private static let tinyPNG = Data(base64Encoded:
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")!
+
+    override func setUpWithError() throws {
+        root = FileManager.default.temporaryDirectory.appendingPathComponent("tp-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        store = ProjectStore(rootDir: root)
+    }
+    override func tearDownWithError() throws { try? FileManager.default.removeItem(at: root) }
+
+    /// Project whose shape is a ~2k-triangle sphere.
+    private func projectWithSphere() throws -> Project.ID {
+        let p = store.newProject()
+        let img = root.appendingPathComponent("in.png")
+        try Self.tinyPNG.write(to: img)
+        store.setImage(fromURL: img, for: p.id)
+        let staged = try store.stageShapeRun(for: p.id)
+        let g = MeshBoolean.grid(lo: [-1, -1, -1], hi: [1, 1, 1], resolution: 24)
+        let m = MeshBoolean.surfaceNets(MeshBoolean.primitiveField(.sphere, center: .zero, size: 1, grid: g), grid: g)
+        try MeshDecimator.serialize(positions: m.positions, faces: m.faces).write(to: staged.mesh)
+        XCTAssertNil(store.commitShapeRun(staged))
+        return p.id
+    }
+
+    func testLODsSaveOneVersionPerLevelAndSelectTheLargest() async throws {
+        let id = try projectWithSphere()
+        let err = await store.applyLODs(percents: [50, 25], for: id)
+        XCTAssertNil(err)
+        let gens = try XCTUnwrap(store.project(id)?.generations)
+        XCTAssertEqual(gens.count, 3)
+        XCTAssertEqual(gens.compactMap(\.editSummary).map { String($0.prefix(7)) }, ["LOD 25%", "LOD 50%"])
+        XCTAssertEqual(store.project(id)?.currentGeneration?.id, gens.last?.id)
+        let counts = try gens.map { g -> Int in
+            let url = root.appendingPathComponent("projects").appendingPathComponent(id.uuidString).appendingPathComponent(g.meshFileName)
+            return try XCTUnwrap(MeshDecimator.parse(Data(contentsOf: url))).faces.count
+        }
+        // history order: original, LOD 25%, LOD 50%
+        XCTAssertLessThan(counts[1], counts[2])
+        XCTAssertLessThan(counts[2], counts[0])
+        let none = await store.applyLODs(percents: [], for: id)
+        XCTAssertEqual(none, "Add at least one level in Settings → Tools.")
+    }
+
+    func testSymmetrizeThroughTheStore() async throws {
+        let id = try projectWithSphere()
+        let err = await store.applyMeshEdit(.symmetrize(axis: .y, keepPositive: true), for: id)
+        XCTAssertNil(err)
+        XCTAssertEqual(store.project(id)?.currentGeneration?.editSummary?.hasPrefix("mirrored +Y half"), true)
+    }
+}

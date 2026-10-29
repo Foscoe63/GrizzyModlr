@@ -189,6 +189,24 @@ enum MeshBoolean {
         return (positions, faces)
     }
 
+    // MARK: remesh
+
+    /// Re-meshes a closed shape through its signed distance field: evenly sized, grid-regular
+    /// triangles (feature-preserving only down to a voxel), lightly relaxed to remove the
+    /// staircase. Returns nil when the sampled field has no surface (e.g. an open mesh).
+    static func remesh(positions: [SIMD3<Float>], faces: [SIMD3<UInt32>], resolution: Int,
+                       relaxIterations: Int = 3) -> (positions: [SIMD3<Float>], faces: [SIMD3<UInt32>])? {
+        guard !positions.isEmpty, !faces.isEmpty else { return nil }
+        var lo = SIMD3<Float>(repeating: .infinity), hi = SIMD3<Float>(repeating: -.infinity)
+        for q in positions { lo = simd_min(lo, q); hi = simd_max(hi, q) }
+        let g = grid(lo: lo, hi: hi, resolution: resolution)
+        let field = meshField(positions: positions, faces: faces, grid: g)
+        let m = surfaceNets(field, grid: g)
+        guard m.faces.count > 8 else { return nil }
+        let relaxed = MeshOps.smooth(positions: m.positions, faces: m.faces, iterations: relaxIterations)
+        return (relaxed, m.faces)
+    }
+
     // MARK: entry points
 
     struct Operand {

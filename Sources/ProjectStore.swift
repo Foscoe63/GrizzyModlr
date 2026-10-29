@@ -685,6 +685,42 @@ final class ProjectStore {
         return nil
     }
 
+    /// Level-of-detail set: decimates the selected shape to each percentage of its triangle
+    /// count and saves every level as its own version (largest selected at the end).
+    func applyLODs(percents: [Int], for id: Project.ID) async -> String? {
+        guard let project = project(id), let cur = project.currentGeneration else { return "There's no shape to edit." }
+        let baseID = cur.kind == .shape ? cur.id : cur.sourceShapeID
+        guard let base = project.generations.first(where: { $0.id == baseID }) else {
+            return "The source shape for this version is missing."
+        }
+        let levels = percents.filter { (1...95).contains($0) }.sorted()      // smallest first → largest ends selected
+        guard !levels.isEmpty else { return "Add at least one level in Settings → Tools." }
+        let dir = folder(for: id)
+        let src = dir.appendingPathComponent(base.meshFileName)
+        let planned = levels.map { (percent: $0, id: UUID()) }
+        let results = await Task.detached(priority: .userInitiated) { () -> [(Int, UUID, URL, String)]? in
+            guard let raw = try? Data(contentsOf: src), let mesh = MeshDecimator.parse(raw) else { return nil }
+            var out: [(Int, UUID, URL, String)] = []
+            for p in planned {
+                let budget = max(mesh.faces.count * p.percent / 100, 4)
+                let dst = dir.appendingPathComponent("gen_\(p.id.uuidString).mesh")
+                guard let r = MeshOps.applyToFile(.decimate(faceBudget: budget), from: src, to: dst), r.changed else { continue }
+                out.append((p.percent, p.id, dst, r.note))
+            }
+            return out
+        }.value
+        guard let results else { return "The shape mesh couldn't be read." }
+        guard !results.isEmpty else { return "Nothing to change." }
+        guard let i = projects.firstIndex(where: { $0.id == id }) else {
+            for r in results { try? FileManager.default.removeItem(at: r.2) }
+            return "The project no longer exists."
+        }
+        for r in results {
+            appendEditedShape(from: base, id: r.1, mesh: r.2, summary: "LOD \(r.0)% (\(r.3))", at: i)
+        }
+        return nil
+    }
+
     /// Saves `mesh` as a new, selected shape version derived from `base`.
     private func appendEditedShape(from base: Generation, id newID: UUID, mesh: URL,
                                    summary: String, at i: Int) {

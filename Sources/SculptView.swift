@@ -9,9 +9,9 @@ final class SculptController {
     var mesh: SculptMesh
     var tool: SculptTool = .pull
     /// Brush radius as a fraction of the model's bounding radius.
-    var radiusFraction: Double = 0.12
+    var radiusFraction: Double = ToolDefaults.sculptSize()
     /// 0…1 strength of each dab.
-    var strength: Double = 0.4
+    var strength: Double = ToolDefaults.sculptStrength()
     /// Bumped after every edit so views depending on `canUndo` / `isEdited` refresh.
     private(set) var revision = 0
 
