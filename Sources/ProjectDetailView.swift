@@ -15,6 +15,8 @@ struct ProjectDetailView: View {
     @State private var showMeshEdit = false
     @State private var sculpt: SculptController?
     @State private var sculptBusy = false
+    @State private var texturePaint: TexturePaintController?
+    @State private var paintBusy = false
     @State private var showMaterialEdit = false
     @State private var showPaintSettings = false
     @State private var editorInputs: MaskEditorInputs?
@@ -151,9 +153,25 @@ struct ProjectDetailView: View {
                     PointCloud().frame(width: 130, height: 130)
                 }
             } else if let textured = texturedContent {
-                MeshViewer(content: textured)
+                MeshViewer(content: textured, paint: texturePaint)
             }
             paintStatusOverlay
+            if let texturePaint {
+                VStack {
+                    Spacer()
+                    TexturePaintToolbar(paint: texturePaint, busy: paintBusy,
+                                        onSave: {
+                                            paintBusy = true
+                                            Task {
+                                                let err = await store.commitTexturePaint(texturePaint, for: project.id)
+                                                paintBusy = false
+                                                if err == nil { self.texturePaint = nil }
+                                            }
+                                        },
+                                        onCancel: { self.texturePaint = nil })
+                }
+                .padding(12)
+            }
             exportOverlay(meshURL: paintExportSource?.mesh, texture: paintExportSource?.texture,
                           metallicRoughness: paintExportSource?.mr)
             if paintExportSource != nil {
@@ -174,6 +192,18 @@ struct ProjectDetailView: View {
                         .popover(isPresented: $showMaterialEdit, arrowEdge: .bottom) {
                             MaterialEditPopover(projectID: project.id).environment(store)
                         }
+                        Button { Task { texturePaint = await store.beginTexturePaint(for: project.id) } } label: {
+                            Image(systemName: "paintbrush.pointed")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .frame(width: 28, height: 28)
+                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(texturePaint != nil)
+                        .help("Paint on the texture")
                         Color.clear.frame(width: 28 + 8, height: 28)   // clear the export button
                     }
                     Spacer()

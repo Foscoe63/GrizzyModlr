@@ -782,6 +782,63 @@ final class ProjectStore {
         return nil
     }
 
+    /// Loads the selected painted version's albedo and mesh for brush painting.
+    func beginTexturePaint(for id: Project.ID) async -> TexturePaintController? {
+        guard let project = project(id), let gen = project.currentGeneration, gen.kind == .paint,
+              let texName = gen.paintedTextureFileName else { return nil }
+        let dir = folder(for: id)
+        let meshURL = dir.appendingPathComponent(gen.meshFileName)
+        let texURL = dir.appendingPathComponent(texName)
+        let loaded = await Task.detached(priority: .userInitiated) { () -> (TextureCanvas, TexturedMesh)? in
+            guard let canvas = TextureCanvas.load(texURL),
+                  let raw = try? Data(contentsOf: meshURL), let mesh = TexturedMesh.parse(raw) else { return nil }
+            return (canvas, mesh)
+        }.value
+        guard let (canvas, mesh) = loaded else { return nil }
+        return TexturePaintController(canvas: canvas, mesh: mesh)
+    }
+
+    /// Saves painted pixels as a new paint version (mesh and MR map are shared).
+    func commitTexturePaint(_ paint: TexturePaintController, for id: Project.ID) async -> String? {
+        guard let project = project(id), let base = project.currentGeneration, base.kind == .paint else {
+            return "Select a painted version to edit."
+        }
+        let newID = UUID()
+        let dst = folder(for: id).appendingPathComponent("painted_\(newID.uuidString)_albedo.png")
+        let canvas = paint.canvas
+        let ok = await Task.detached(priority: .userInitiated) { canvas.write(to: dst) }.value
+        guard ok else { return "Couldn't save the painted texture." }
+        guard let i = projects.firstIndex(where: { $0.id == id }) else {
+            try? FileManager.default.removeItem(at: dst)
+            return "The project no longer exists."
+        }
+        appendEditedPaint(from: base, id: newID, albedo: dst, mr: base.paintedMRFileName,
+                          mesh: base.meshFileName, summary: "hand-painted", at: i)
+        return nil
+    }
+
+    /// Saves a new paint version derived from `base` with the given files.
+    private func appendEditedPaint(from base: Generation, id newID: UUID, albedo: URL, mr: String?,
+                                   mesh: String, summary: String, at i: Int) {
+        let gen = Generation(id: newID, createdAt: Date(), modelRaw: base.modelRaw, quantRaw: base.quantRaw,
+                             steps: base.steps, removeBackground: base.removeBackground,
+                             meshFileName: mesh, inputFileName: base.inputFileName,
+                             durationSeconds: nil, guidanceRaw: base.guidanceRaw, octreeRaw: base.octreeRaw,
+                             seedRaw: base.seedRaw, sourceFileName: base.sourceFileName,
+                             maskFileName: base.maskFileName,
+                             paintedTextureFileName: albedo.lastPathComponent,
+                             paintedMRFileName: mr,
+                             kindRaw: "paint", sourceShapeID: base.sourceShapeID,
+                             paintModelRaw: base.paintModelRaw, paintResRaw: base.paintResRaw,
+                             paintStepsRaw: base.paintStepsRaw, paintTexRaw: base.paintTexRaw,
+                             paintFacesRaw: base.paintFacesRaw, paintSuperresRaw: base.paintSuperresRaw,
+                             paintSeedRaw: base.paintSeedRaw,
+                             editSummary: summary, editedFromID: base.id)
+        projects[i].generations.append(gen)
+        projects[i].selectedGenerationID = newID
+        save()
+    }
+
     /// Drop a staged run's files (cancelled / failed) so they don't accumulate.
     func discardShapeRun(_ staged: StagedShapeRun) {
         for url in [staged.mesh, staged.input, staged.source, staged.mask].compactMap({ $0 }) + Array(staged.extraViews.values) {

@@ -18,6 +18,8 @@ struct MeshViewer: NSViewRepresentable {
     var onLoading: ((Bool) -> Void)? = nil    // true while async-loading content
     /// When set, the viewer shows this editable mesh and left-drag sculpts it.
     var sculpt: SculptController? = nil
+    /// When set, left-drag paints the albedo texture of the (textured) content.
+    var paint: TexturePaintController? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
     final class Coordinator {
@@ -75,6 +77,14 @@ struct MeshViewer: NSViewRepresentable {
             return
         }
         if view.controller != nil { view.detach() }
+        if let paint {
+            if view.paintController !== paint, let container = container(in: view) {
+                view.attachPaint(paint, container: container)
+            }
+        } else if view.paintController != nil {
+            view.detachPaint()
+            context.coordinator.loaded = nil        // discard unsaved strokes: reload the saved texture
+        }
         if context.coordinator.loaded == content { return }
         context.coordinator.loaded = content
 

@@ -73,6 +73,7 @@ targets:
       - Sources/ProjectStore.swift
       - Sources/MeshViewer.swift
       - Sources/SculptView.swift
+      - Sources/TexturePaintController.swift
       - Sources/BackgroundRemover.swift
     settings:
       base:

@@ -186,12 +186,17 @@ final class ReducerInstallTests: XCTestCase {
         XCTAssertEqual(s.installState(.shapeSmall), .notInstalled)
         XCTAssertEqual(effects, [.removeModelFiles(.shapeSmall)])
 
-        // No remove edge from paused (exact table).
+        // Removing a paused download cancels it and discards the partials.
         var s2 = readyState()
         reduce(&s2, .installRequested(.paintSmall))
         reduce(&s2, .installPauseRequested(.paintSmall))
-        XCTAssertEqual(reduce(&s2, .installRemoveRequested(.paintSmall)), [])
-        if case .paused = s2.installState(.paintSmall) {} else { XCTFail("expected paused") }
+        XCTAssertEqual(reduce(&s2, .installRemoveRequested(.paintSmall)),
+                       [.removeModelFiles(.paintSmall), .persistInstallIntents([])])
+        XCTAssertEqual(s2.installState(.paintSmall), .notInstalled)
+
+        // No remove edge from a never-installed model.
+        var s3 = readyState()
+        XCTAssertEqual(reduce(&s3, .installRemoveRequested(.paintSmall)), [])
     }
 
     // MARK: import (offline install)

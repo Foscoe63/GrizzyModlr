@@ -37,6 +37,10 @@ final class SculptSCNView: SCNView {
     private var cursor: SCNNode?
     private var tracking: NSTrackingArea?
     private var stroking = false
+    private(set) var paintController: TexturePaintController?
+    private var paintMaterial: SCNMaterial?
+    private var lastPaintUV: SIMD2<Float>?
+    private var flushScheduled = false
 
     // MARK: attach / detach
 
@@ -78,10 +82,8 @@ final class SculptSCNView: SCNView {
     @MainActor
     func detach() {
         controller = nil
-        sculptNode = nil; element = nil; material = nil
-        cursorRoot.removeFromParentNode()
-        cursorRoot.childNodes.forEach { $0.removeFromParentNode() }
-        cursor = nil
+        element = nil; material = nil
+        if paintController == nil { sculptNode = nil; removeCursor() }
         stroking = false
     }
 
@@ -104,9 +106,78 @@ final class SculptSCNView: SCNView {
         node.geometry = g
     }
 
+    /// Starts texture painting on the already-loaded textured node in `container`.
+    @MainActor
+    func attachPaint(_ controller: TexturePaintController, container: SCNNode) {
+        guard let node = container.childNodes.first, let mat = node.geometry?.firstMaterial else { return }
+        paintController = controller
+        paintMaterial = mat
+        sculptNode = node                          // picking and the ring cursor use this node
+        installCursor(on: container)
+    }
+
+    @MainActor
+    func detachPaint() {
+        paintController = nil
+        paintMaterial = nil
+        lastPaintUV = nil
+        if controller == nil { sculptNode = nil; removeCursor() }
+    }
+
+    @MainActor
+    private func installCursor(on container: SCNNode) {
+        guard cursor == nil else { return }
+        let torus = SCNTorus(ringRadius: 1, pipeRadius: 0.03)
+        let cm = SCNMaterial()
+        cm.diffuse.contents = NSColor.systemYellow
+        cm.emission.contents = NSColor.systemYellow
+        cm.lightingModel = .constant
+        torus.materials = [cm]
+        let c = SCNNode(geometry: torus)
+        c.isHidden = true
+        cursor = c
+        cursorRoot.name = "BrushCursor"
+        cursorRoot.addChildNode(c)
+        scene?.rootNode.addChildNode(cursorRoot)
+        updateTrackingAreas()
+    }
+
+    @MainActor
+    private func removeCursor() {
+        cursorRoot.removeFromParentNode()
+        cursorRoot.childNodes.forEach { $0.removeFromParentNode() }
+        cursor = nil
+    }
+
+    /// Pushes the edited canvas to the material at most ~20×/s (a 4K re-upload per
+    /// mouse event would stall).
+    @MainActor
+    private func scheduleFlush() {
+        guard !flushScheduled else { return }
+        flushScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.flushScheduled = false
+                self.flushPaint()
+            }
+        }
+    }
+
+    @MainActor
+    func flushPaint() {
+        guard let paintController, let paintMaterial, let img = paintController.canvas.cgImage() else { return }
+        paintMaterial.diffuse.contents = NSImage(cgImage: img, size: NSSize(width: img.width, height: img.height))
+    }
+
     // MARK: picking
 
     private func pick(_ event: NSEvent) -> (point: SIMD3<Float>, normal: SIMD3<Float>)? {
+        pickDetailed(event).map { ($0.point, $0.normal) }
+    }
+
+    private func pickDetailed(_ event: NSEvent)
+    -> (point: SIMD3<Float>, normal: SIMD3<Float>, uv: SIMD2<Float>, face: Int)? {
         guard let node = sculptNode else { return nil }
         let p = convert(event.locationInWindow, from: nil)
         let hits = hitTest(p, options: [.rootNode: node,
@@ -114,17 +185,20 @@ final class SculptSCNView: SCNView {
                                         .ignoreHiddenNodes: true])
         guard let h = hits.first else { return nil }
         let lc = h.localCoordinates, ln = h.localNormal
-        return (SIMD3(Float(lc.x), Float(lc.y), Float(lc.z)), SIMD3(Float(ln.x), Float(ln.y), Float(ln.z)))
+        let t = h.textureCoordinates(withMappingChannel: 0)
+        return (SIMD3(Float(lc.x), Float(lc.y), Float(lc.z)), SIMD3(Float(ln.x), Float(ln.y), Float(ln.z)),
+                SIMD2(Float(t.x), Float(t.y)), h.faceIndex)
     }
 
     private func sculpting(_ event: NSEvent) -> Bool {
-        controller != nil && !event.modifierFlags.contains(.option)
+        (controller != nil || paintController != nil) && !event.modifierFlags.contains(.option)
     }
 
     private func moveCursor(_ hit: (point: SIMD3<Float>, normal: SIMD3<Float>)?) {
-        guard let controller, let cursor, let torus = cursor.geometry as? SCNTorus else { return }
+        guard let cursor, let torus = cursor.geometry as? SCNTorus else { return }
         guard let hit else { cursor.isHidden = true; return }
-        let r = CGFloat(controller.brushRadius)
+        let radius = controller?.brushRadius ?? paintController?.worldRadius ?? 0.1
+        let r = CGFloat(radius)
         torus.ringRadius = r
         torus.pipeRadius = max(r * 0.02, 1e-5)
         cursor.simdPosition = hit.point
@@ -134,7 +208,27 @@ final class SculptSCNView: SCNView {
     }
 
     @MainActor
+    private func paintDab(_ event: NSEvent) {
+        guard let pc = paintController else { return }
+        guard let hit = pickDetailed(event) else { moveCursor(nil); lastPaintUV = nil; return }
+        moveCursor((hit.point, hit.normal))
+        // Fill the gap to the previous dab so fast strokes stay continuous — but never
+        // across a UV seam (a big UV jump means a different chart).
+        if pc.tool == .paint, let last = lastPaintUV, simd_distance(last, hit.uv) < 0.04 {
+            let step = max(pc.worldRadius * pc.mesh.texelsPerUnit(face: hit.face, textureWidth: pc.canvas.width)
+                           / Float(pc.canvas.width) * 0.5, 1e-4)
+            let n = Int(simd_distance(last, hit.uv) / step)
+            if n > 1 { for k in 1..<n { pc.dab(uv: last + (hit.uv - last) * (Float(k) / Float(n)), face: hit.face) } }
+        }
+        pc.dab(uv: hit.uv, face: hit.face)
+        lastPaintUV = hit.uv
+        scheduleFlush()
+        pc.touch()
+    }
+
+    @MainActor
     private func dab(_ event: NSEvent) {
+        if paintController != nil { paintDab(event); return }
         guard let controller else { return }
         let hit = pick(event)
         moveCursor(hit)
@@ -151,6 +245,8 @@ final class SculptSCNView: SCNView {
         guard sculpting(event) else { cursor?.isHidden = true; super.mouseDown(with: event); return }
         MainActor.assumeIsolated {
             controller?.mesh.beginStroke()
+            paintController?.canvas.beginStroke()
+            lastPaintUV = nil
             stroking = true
             dab(event)
         }
@@ -167,12 +263,16 @@ final class SculptSCNView: SCNView {
         MainActor.assumeIsolated {
             controller?.mesh.endStroke()
             controller?.touch()
+            paintController?.canvas.endStroke()
+            paintController?.touch()
+            lastPaintUV = nil
+            if paintController != nil { flushPaint() }
         }
     }
 
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
-        guard controller != nil else { return }
+        guard controller != nil || paintController != nil else { return }
         moveCursor(sculpting(event) ? pick(event) : nil)
     }
 
