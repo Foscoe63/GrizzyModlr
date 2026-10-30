@@ -65,6 +65,7 @@ enum FlowRemesh {
         // Back onto the input surface.
         let closest = ClosestPoint(positions: positions, faces: faces)
         mesh.positions = mesh.positions.map { closest.nearest(to: $0) }
+        relaxFolds(&mesh, closest: closest)
         let closed = isClosedManifold(mesh.positions.count, mesh.quads, mesh.fillTriangles)
         if trace != nil {
             var c: [UInt64: Int] = [:]
@@ -96,6 +97,47 @@ enum FlowRemesh {
         return Output(positions: mesh.positions, faces: tris, quads: mesh.quads,
                       filledTriangles: mesh.fillTriangles.count,
                       regularVertexShare: Float(regular) / Float(max(valence.count, 1)))
+    }
+
+    // MARK: fold repair
+
+    /// Faces whose normal points against the input surface (folds from projecting hole caps onto
+    /// curved or concave areas) are relaxed: their vertices move toward their neighbours' average and
+    /// are projected back, repeatedly, until no fold is left or the rounds run out.
+    static func relaxFolds(_ mesh: inout Extracted, closest: ClosestPoint) {
+        var polys: [[UInt32]] = mesh.quads.map { [$0.x, $0.y, $0.z, $0.w] } + mesh.fillTriangles.map { [$0.x, $0.y, $0.z] }
+        var nbr = [Set<UInt32>](repeating: [], count: mesh.positions.count)
+        for f in polys { for i in 0..<f.count { nbr[Int(f[i])].insert(f[(i + 1) % f.count]); nbr[Int(f[(i + 1) % f.count])].insert(f[i]) } }
+        func flipped(_ f: [UInt32]) -> Bool {
+            let p = f.map { mesh.positions[Int($0)] }
+            var n = SIMD3<Float>.zero
+            for i in 1..<(p.count - 1) { n += simd_cross(p[i] - p[0], p[i + 1] - p[0]) }
+            let centre = p.reduce(.zero, +) / Float(p.count)
+            return simd_dot(n, closest.normal(at: centre)) < 0
+        }
+        var bad = polys.filter(flipped)
+        trace?("folded faces: \(bad.count) of \(polys.count)")
+        if bad.count * 2 > polys.count {                       // the whole mesh winds inward
+            mesh.quads = mesh.quads.map { [$0.x, $0.w, $0.z, $0.y] }
+            mesh.fillTriangles = mesh.fillTriangles.map { [$0.x, $0.z, $0.y] }
+            polys = mesh.quads.map { [$0.x, $0.y, $0.z, $0.w] } + mesh.fillTriangles.map { [$0.x, $0.y, $0.z] }
+            bad = polys.filter(flipped)
+            trace?("after reversing winding: \(bad.count)")
+        }
+        for round in 0..<80 where !bad.isEmpty {
+            let step: Float = round < 20 ? 0.5 : 0.85
+            var touched = Set<UInt32>()
+            for f in bad { for v in f { touched.insert(v); nbr[Int(v)].forEach { touched.insert($0) } } }
+            var next = mesh.positions
+            for v in touched where !nbr[Int(v)].isEmpty {
+                let avg = nbr[Int(v)].reduce(SIMD3<Float>.zero) { $0 + mesh.positions[Int($1)] } / Float(nbr[Int(v)].count)
+                next[Int(v)] = closest.nearest(to: mesh.positions[Int(v)] * (1 - step) + avg * step)
+            }
+            mesh.positions = next
+            bad = polys.filter(flipped)
+            if round % 10 == 9 { trace?("fold repair round \(round): \(bad.count) left") }
+        }
+        trace?("folded faces after repair: \(bad.count)")
     }
 
     // MARK: extraction
@@ -486,9 +528,19 @@ struct ClosestPoint {
     }
     private func key(_ x: Int, _ y: Int, _ z: Int) -> Int { (z * dims.y + y) * dims.x + x }
 
-    func nearest(to p: SIMD3<Float>) -> SIMD3<Float> {
+    func nearest(to p: SIMD3<Float>) -> SIMD3<Float> { nearestFace(to: p).point }
+
+    /// Unit normal of the surface triangle closest to `p`.
+    func normal(at p: SIMD3<Float>) -> SIMD3<Float> {
+        let f = faces[nearestFace(to: p).face]
+        let n = simd_cross(positions[Int(f.y)] - positions[Int(f.x)], positions[Int(f.z)] - positions[Int(f.x)])
+        let l = simd_length(n)
+        return l > 1e-20 ? n / l : [0, 0, 1]
+    }
+
+    func nearestFace(to p: SIMD3<Float>) -> (point: SIMD3<Float>, face: Int) {
         let c = cellIndex(p)
-        var best = p, bestD = Float.infinity
+        var best = p, bestD = Float.infinity, bestFace = 0
         var ring = 0
         let maxRing = max(dims.x, max(dims.y, dims.z))
         while ring <= maxRing {
@@ -500,7 +552,7 @@ struct ClosestPoint {
                             let f = faces[i]
                             let q = Self.closest(p, positions[Int(f.x)], positions[Int(f.y)], positions[Int(f.z)])
                             let d = simd_distance_squared(p, q)
-                            if d < bestD { bestD = d; best = q }
+                            if d < bestD { bestD = d; best = q; bestFace = i }
                         }
                     }
                 }
@@ -508,7 +560,7 @@ struct ClosestPoint {
             if bestD.isFinite, bestD.squareRoot() <= Float(ring) * cell { break }
             ring += 1
         }
-        return best
+        return (best, bestFace)
     }
 
     /// Closest point on triangle `abc` to `p` (Ericson, Real-Time Collision Detection).
