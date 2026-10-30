@@ -1,4 +1,4 @@
-# Modelr Feature Roadmap
+# GrizzyModlr Feature Roadmap
 
 Comprehensive plan to evolve from image→3D to a full local 3D creation studio.
 
@@ -58,42 +58,42 @@ Comprehensive plan to evolve from image→3D to a full local 3D creation studio.
 ### Phase 1: Essential Editing (P1)
 
 #### 1.1 Mesh Editing Tools
-- **Interactive decimation** — slider to reduce poly count post-generation
-- **Mesh smoothing** — Laplacian smoothing with iterations control
-- **Hole filling** — auto-detect and fill holes in generated meshes
-- **Vertex sculpting** — brush-based push/pull, smooth, flatten
-- **Boolean operations** — union, subtract, intersect for combining meshes
+- ✅ **Interactive decimation** — slider to reduce poly count post-generation
+- ✅ **Mesh smoothing** — Laplacian smoothing with iterations control
+- ✅ **Hole filling** — auto-detect and fill holes in generated meshes
+- ✅ **Vertex sculpting** — brush-based push/pull, smooth, flatten
+- ✅ **Boolean operations** — union, subtract, intersect for combining meshes
 
 #### 1.2 Texture Editing
-- **Texture paint** — paint directly on 3D model surface
-- **Texture inpainting** — AI-assisted fill for bad regions
-- **UV editor** — view and manually adjust UV maps
-- **Material editor** — adjust roughness, metalness, color per-region
+- ✅ **Texture paint** — paint directly on 3D model surface
+- ✅ **Texture inpainting** — AI-assisted fill for bad regions
+- ✅ **UV editor** — view and manually adjust UV maps
+- ✅ **Material editor** — adjust roughness, metalness, color per-region
 
 #### 1.3 Multi-View Generation
-- **Multi-image input** — use 2-4 reference images for better accuracy
-- **View synthesis** — generate missing views automatically
-- **Reference view alignment** — help user position reference images
+- ✅ **Multi-image input** — use 2-4 reference images for better accuracy
+- ✅ **View synthesis** — generate missing views automatically
+- ✅ **Reference view alignment** — help user position reference images
 
 ### Phase 2: Advanced Modeling (P2)
 
 #### 2.1 Topology Tools
 - **Auto-retopology** — clean quad mesh from dense triangles
 - **Edge flow editing** — for animation-ready models
-- **LOD generation** — automatic Level of Detail variants
-- **Symmetry enforcement** — mirror edits, fix asymmetry
+- ✅ **LOD generation** — automatic Level of Detail variants
+- ✅ **Symmetry enforcement** — mirror edits, fix asymmetry
 
 #### 2.2 Scene Composition
-- **Multi-object scenes** — generate and arrange multiple objects
-- **Ground plane + shadows** — proper scene lighting
-- **HDR environment maps** — realistic lighting preview
-- **Camera presets** — product shots, turntable, etc.
+- ✅ **Multi-object scenes** — generate and arrange multiple objects
+- ✅ **Ground plane + shadows** — proper scene lighting
+- ✅ **HDR environment maps** — realistic lighting preview
+- ✅ **Camera presets** — product shots, turntable, etc.
 
 #### 2.3 Additional AI Models
-- **TripoSR** — fast alternative model (MLX port needed)
-- **Stable Zero123** — novel view synthesis
-- **Text-to-3D** — prompt-based generation
-- **Depth estimation** — improve generation from single images
+- ✅ **TripoSR** — fast alternative model (MLX port needed)
+- ✅ **Stable Zero123** — novel view synthesis
+- ✅ **Text-to-3D** — prompt-based generation
+- ✅ **Depth estimation** — improve generation from single images
 
 ### Phase 3: Pro Features (P3)
 
@@ -104,7 +104,7 @@ Comprehensive plan to evolve from image→3D to a full local 3D creation studio.
 - **Animation export** — FBX with animations
 
 #### 3.2 Extended Export
-- **USDZ** — Apple AR Quick Look
+- ✅ **USDZ** — Apple AR Quick Look
 - **FBX** — industry standard with animations
 - **3MF** — modern 3D printing format
 - **Slicer integration** — direct send to OrcaSlicer/PrusaSlicer
@@ -152,3 +152,7 @@ Comprehensive plan to evolve from image→3D to a full local 3D creation studio.
 - GitHub: Tencent/Hunyuan3D-2 (15k stars)
 - GitHub: xxlong0/Wonder3D (5.4k stars)
 - User issues from TripoSR, InstantMesh, Wonder3D repositories
+
+## Status notes (2026-10-30)
+
+Done: Phase 1, Phase 2 except auto-retopology to true quads and edge-flow editing, plus USDZ export. Partial: texture inpainting is classical diffusion (not AI), material editor is global (not per-region), booleans are resolution-limited. Not started: rigging, FBX, 3MF, slicer integration, batch, templates, plugins.
