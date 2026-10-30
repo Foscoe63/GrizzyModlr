@@ -300,6 +300,10 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.paintOpacity) private var paintOpacity = ToolDefaults.fallbackPaintOpacity
     @AppStorage(ToolDefaults.Key.sceneSpacing) private var sceneSpacing = ToolDefaults.fallbackSceneSpacing
     @AppStorage(ToolDefaults.Key.exportQuads) private var exportQuads = false
+    @AppStorage(ToolDefaults.Key.aiFillPrompt) private var aiFillPrompt = ToolDefaults.fallbackAIFillPrompt
+    @AppStorage(ToolDefaults.Key.aiFillSteps) private var aiFillSteps = ToolDefaults.fallbackAIFillSteps
+    @AppStorage(ToolDefaults.Key.aiFillStrength) private var aiFillStrength = ToolDefaults.fallbackAIFillStrength
+    @AppStorage(ToolDefaults.Key.aiFillGuidance) private var aiFillGuidance = ToolDefaults.fallbackAIFillGuidance
     @AppStorage(ToolDefaults.Key.regionTolerance) private var regionTolerance = ToolDefaults.fallbackRegionTolerance
     @AppStorage(ToolDefaults.Key.regionFeather) private var regionFeather = ToolDefaults.fallbackRegionFeather
     @AppStorage(ToolDefaults.Key.tsrThreshold) private var tsrThreshold = ToolDefaults.fallbackTSRThreshold
@@ -398,6 +402,14 @@ struct ToolSettingsView: View {
                 Text("Starting values when limiting a material edit to one color of the texture.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("AI Fill") {
+                TextField("Default prompt", text: $aiFillPrompt, axis: .vertical).lineLimit(2...3)
+                LabeledContent("Steps") { slider($aiFillSteps, 10...50, step: 1, label: "\(Int(aiFillSteps))") }
+                LabeledContent("Strength") { slider($aiFillStrength, 0.3...1, step: 0.05, label: String(format: "%.0f%%", aiFillStrength * 100)) }
+                LabeledContent("Prompt guidance") { slider($aiFillGuidance, 1...12, step: 0.5, label: String(format: "%.1f", aiFillGuidance)) }
+                Text("The texture's AI Fill tool regenerates the marked area with Stable Diffusion 2.1 (the Text to 3D model). Lower strength stays closer to what is there.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Brushes") {
                 LabeledContent("Sculpt size") { slider($sculptSize, 0.02...0.4, step: 0.01, label: String(format: "%.0f%%", sculptSize * 100)) }
                 LabeledContent("Sculpt strength") { slider($sculptStrength, 0.05...1, step: 0.05, label: String(format: "%.0f%%", sculptStrength * 100)) }
@@ -410,7 +422,7 @@ struct ToolSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(height: 800)
+        .frame(height: 900)
     }
 
     private func slider(_ value: Binding<Double>, _ range: ClosedRange<Double>, step: Double, label: String) -> some View {
@@ -429,6 +441,8 @@ struct ToolSettingsView: View {
         paintSize = ToolDefaults.fallbackPaintSize; paintHardness = ToolDefaults.fallbackPaintHardness
         paintOpacity = ToolDefaults.fallbackPaintOpacity; sceneSpacing = ToolDefaults.fallbackSceneSpacing
         exportQuads = false
+        aiFillPrompt = ToolDefaults.fallbackAIFillPrompt; aiFillSteps = ToolDefaults.fallbackAIFillSteps
+        aiFillStrength = ToolDefaults.fallbackAIFillStrength; aiFillGuidance = ToolDefaults.fallbackAIFillGuidance
         regionTolerance = ToolDefaults.fallbackRegionTolerance; regionFeather = ToolDefaults.fallbackRegionFeather
         tsrThreshold = ToolDefaults.fallbackTSRThreshold; tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
         tsrKeepLargest = true

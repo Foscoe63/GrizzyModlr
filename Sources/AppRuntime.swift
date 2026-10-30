@@ -40,6 +40,8 @@ final class AppRuntime {
     private(set) var viewSynth: [Project.ID: ViewSynthState] = [:]
     /// Text → image progress per project (same shape as view synthesis).
     private(set) var textToImage: [Project.ID: ViewSynthState] = [:]
+    /// AI Fill (texture inpainting) progress per project.
+    private(set) var aiFill: [Project.ID: ViewSynthState] = [:]
     /// Depth relief progress per project.
     private(set) var relief: [Project.ID: ViewSynthState] = [:]
 
@@ -59,6 +61,8 @@ final class AppRuntime {
     @ObservationIgnored private var viewSynthRuns: [Project.ID: ViewSynthEngine.Run] = [:]
     @ObservationIgnored private let textToImageEngine = TextToImageEngine()
     @ObservationIgnored private let depthEngine = DepthEngine()
+    @ObservationIgnored private let inpaintEngine = InpaintEngine()
+    @ObservationIgnored private var inpaintRuns: [Project.ID: InpaintEngine.Run] = [:]
     @ObservationIgnored private var depthRuns: [Project.ID: DepthEngine.Run] = [:]
     @ObservationIgnored private var textToImageRuns: [Project.ID: TextToImageEngine.Run] = [:]
     @ObservationIgnored private let arbiter: EngineArbiter
@@ -273,6 +277,70 @@ final class AppRuntime {
         depthRuns[id] = run
     }
 
+    /// Regenerates the AI Fill selection of a texture-paint session with Stable Diffusion 2.1
+    /// (blended latent diffusion in a window around the selection) and installs it as one undo step.
+    func startAIFill(_ paint: TexturePaintController, for id: Project.ID) {
+        guard aiFill[id] == nil, let request = paint.fillRequest() else { return }
+        guard let weights = ModelStore.textToImageDir() else { showModelManager(); return }
+        let busy = state.shape.values.contains { $0.state.isRunning } || state.paint.values.contains { $0.state.isRunning }
+            || viewSynth.values.contains { if case .running = $0 { return true } else { return false } }
+            || textToImage.values.contains { if case .running = $0 { return true } else { return false } }
+            || relief.values.contains { if case .running = $0 { return true } else { return false } }
+        guard !busy else { aiFill[id] = .failed("Wait for the current generation to finish first."); return }
+        aiFill[id] = .running(0)
+        let prompt = paint.fillPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let steps = ToolDefaults.aiFillSteps(), strength = Float(ToolDefaults.aiFillStrength())
+        let guidance = Float(ToolDefaults.aiFillGuidance())
+        let engine = inpaintEngine, shape = shapeEngine, paintEng = paintEngine
+        Task { [weak self] in
+            await shape.evictAndWait()
+            await paintEng.evictAndWait()
+            guard let self else { return }
+            // Window, resampling and feathering happen off the main actor.
+            let prepared = await Task.detached(priority: .userInitiated) { () -> (InpaintEngine.Request, InpaintPatch.Window, [Float])? in
+                guard let b = InpaintPatch.maskBounds(request.mask, width: request.width, height: request.height) else { return nil }
+                let win = InpaintPatch.window(bounds: b, width: request.width, height: request.height)
+                let n = InpaintPatch.modelSize
+                let rgb = InpaintPatch.extractRGB(request.pixels, width: request.width, window: win)
+                let maskPatch = InpaintPatch.extractMask(request.mask, width: request.width, window: win)
+                let grown = InpaintPatch.feathered(maskPatch, width: n, height: n, grow: 4, blur: 0)
+                let cropped = InpaintPatch.cropMask(request.mask, width: request.width, window: win)
+                let edge = max(2, win.side / 128)
+                let weight = InpaintPatch.feathered(cropped, width: win.side, height: win.side, grow: edge, blur: edge)
+                let req = InpaintEngine.Request(rgb: rgb, mask: grown, prompt: prompt.isEmpty ? ToolDefaults.fallbackAIFillPrompt : prompt,
+                                                negative: "text, watermark, blurry, seams, border, frame",
+                                                steps: steps, strength: strength, guidance: guidance,
+                                                seed: UInt64.random(in: 0 ..< UInt64(UInt32.max)), weightsDir: weights)
+                return (req, win, weight)
+            }.value
+            guard let (req, win, weight) = prepared else { self.aiFill[id] = nil; return }
+            let run = engine.fill(req, onProgress: { p in Task { @MainActor in
+                if case .running = self.aiFill[id] { self.aiFill[id] = .running(p) }
+            } }, onFinish: { outcome in Task { @MainActor in
+                self.inpaintRuns[id] = nil
+                switch outcome {
+                case .success(let rgb):
+                    let (w, pixels) = (request.width, request.pixels)
+                    let merged = await Task.detached(priority: .userInitiated) { () -> [UInt8] in
+                        var px = pixels
+                        InpaintPatch.composite(&px, width: w, result: rgb, window: win, weight: weight)
+                        return px
+                    }.value
+                    paint.applyFill(merged)
+                    self.aiFill[id] = nil
+                case .failure(.cancelled):
+                    self.aiFill[id] = nil
+                case .failure(.message(let message)):
+                    self.aiFill[id] = .failed(message)
+                }
+            } })
+            self.inpaintRuns[id] = run
+        }
+    }
+
+    func cancelAIFill(_ id: Project.ID) { inpaintRuns[id]?.cancel() }
+    func dismissAIFillFailure(_ id: Project.ID) { if case .failed = aiFill[id] { aiFill[id] = nil } }
+
     func cancelRelief(_ id: Project.ID) { depthRuns[id]?.cancel() }
     func dismissReliefFailure(_ id: Project.ID) { if case .failed = relief[id] { relief[id] = nil } }
 
@@ -292,6 +360,7 @@ final class AppRuntime {
             && !state.paint.values.contains { $0.state.isRunning }
             && viewSynth.values.allSatisfy { if case .running = $0 { return false } else { return true } }
             && textToImage.values.allSatisfy { if case .running = $0 { return false } else { return true } }
+            && aiFill.values.allSatisfy { if case .running = $0 { return false } else { return true } }
             && relief.values.allSatisfy { if case .running = $0 { return false } else { return true } }
     }
 

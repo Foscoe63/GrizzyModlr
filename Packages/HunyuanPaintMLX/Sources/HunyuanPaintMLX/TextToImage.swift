@@ -125,6 +125,15 @@ public final class DDIMEpsScheduler {
         timesteps = (0 ..< steps).map { $0 * (numTrain / steps) + stepsOffset }.reversed()
     }
 
+    /// Forward-diffuses a clean latent to timestep `t` with the given noise.
+    public func noised(_ z0: MLXArray, noise: MLXArray, at t: Int) -> MLXArray {
+        let a = acp[t]
+        return Float(a.squareRoot()) * z0 + Float((1 - a).squareRoot()) * noise
+    }
+
+    /// Cumulative alpha the sample has after stepping from `t` (what `step` lands on).
+    func previousTimestep(_ t: Int) -> Int { t - ratio }
+
     public func step(_ eps: MLXArray, _ t: Int, _ sample: MLXArray) -> MLXArray {
         let aT = acp[t]
         let prev = t - ratio
@@ -172,6 +181,43 @@ public final class TextToImagePipeline {
             lat = sched.step(eps, t, lat)
             eval(lat)
             onProgress?(i + 1, steps)
+        }
+        return lat
+    }
+
+    /// Masked inpainting with the base (non-inpainting) checkpoint, by blended latent diffusion:
+    /// every step the unmasked latents are replaced by the source image's latents diffused to the
+    /// same noise level, so only the masked region is invented. `image` is `[1,H,W,3]` in -1…1 and
+    /// `mask` is `[1,H/8,W/8,1]` (1 = regenerate). `strength` 0…1 sets how much of the schedule runs.
+    /// Returns latents; the caller composites the decoded result into the masked area only.
+    public func inpaint(image: MLXArray, mask: MLXArray, prompt: String, negative: String = "",
+                        steps: Int = 25, strength: Float = 0.85, guidance: Float = 7.5, seed: UInt64,
+                        isCancelled: () -> Bool = { false },
+                        onProgress: ((Int, Int) -> Void)? = nil) -> MLXArray? {
+        let z0 = PaintVAE(vaeW).encodeMean(image.asType(dtype)).asType(.float32) * 0.18215
+        let noise = MLXRandom.normal(z0.shape, key: MLXRandom.key(seed))
+        let cond = embed(prompt), uncond = embed(negative)
+        let ctx = concatenated([uncond, cond], axis: 0)
+        eval(z0, noise, ctx)
+        let sched = DDIMEpsScheduler(steps: steps)
+        let skip = min(steps - 1, max(0, Int((Float(steps) * (1 - strength)).rounded())))
+        let timesteps = Array(sched.timesteps.dropFirst(skip))
+        guard let first = timesteps.first else { return z0 }
+        let unet = PaintUNet(unetW)
+        var lat = sched.noised(z0, noise: noise, at: first)
+        for (i, t) in timesteps.enumerated() {
+            if isCancelled() { return nil }
+            let input = concatenated([lat, lat], axis: 0).asType(dtype)
+            let out = unet(input, MLXArray([Float(t), Float(t)]), ctx)
+            let parts = split(out.asType(.float32), parts: 2, axis: 0)
+            let eps = parts[0] + guidance * (parts[1] - parts[0])
+            var next = sched.step(eps, t, lat)
+            let prev = sched.previousTimestep(t)
+            let known = prev >= 0 ? sched.noised(z0, noise: noise, at: prev) : z0
+            next = mask * next + (1 - mask) * known
+            lat = next
+            eval(lat)
+            onProgress?(i + 1, timesteps.count)
         }
         return lat
     }

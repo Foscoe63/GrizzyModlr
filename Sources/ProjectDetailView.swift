@@ -176,8 +176,9 @@ struct ProjectDetailView: View {
             if let texturePaint {
                 VStack {
                     Spacer()
-                    TexturePaintToolbar(paint: texturePaint, busy: paintBusy,
+                    TexturePaintToolbar(paint: texturePaint, projectID: project.id, busy: paintBusy,
                                         onSave: {
+                                            texturePaint.discardFillSelection()
                                             paintBusy = true
                                             Task {
                                                 let err = await store.commitTexturePaint(texturePaint, for: project.id)

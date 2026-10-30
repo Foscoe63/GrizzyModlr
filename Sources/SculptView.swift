@@ -214,7 +214,7 @@ final class SculptSCNView: SCNView {
         moveCursor((hit.point, hit.normal))
         // Fill the gap to the previous dab so fast strokes stay continuous — but never
         // across a UV seam (a big UV jump means a different chart).
-        if pc.tool == .paint, let last = lastPaintUV, simd_distance(last, hit.uv) < 0.04 {
+        if pc.tool == .paint || pc.tool == .aiFill, let last = lastPaintUV, simd_distance(last, hit.uv) < 0.04 {
             let step = max(pc.worldRadius * pc.mesh.texelsPerUnit(face: hit.face, textureWidth: pc.canvas.width)
                            / Float(pc.canvas.width) * 0.5, 1e-4)
             let n = Int(simd_distance(last, hit.uv) / step)

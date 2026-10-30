@@ -3,13 +3,14 @@ import CoreGraphics
 import simd
 
 enum PaintTool: String, CaseIterable, Identifiable {
-    case paint, soften, heal
+    case paint, soften, heal, aiFill
     var id: String { rawValue }
     var label: String {
         switch self {
         case .paint: return "Paint"
         case .soften: return "Soften"
         case .heal: return "Heal"
+        case .aiFill: return "AI Fill"
         }
     }
     var icon: String {
@@ -17,6 +18,7 @@ enum PaintTool: String, CaseIterable, Identifiable {
         case .paint: return "paintbrush.pointed"
         case .soften: return "drop"
         case .heal: return "bandage"
+        case .aiFill: return "sparkles"
         }
     }
 }
@@ -80,6 +82,46 @@ struct TextureCanvas {
                 strokeTiles![index] = data
             }
         }
+    }
+
+    // MARK: selection tint / patches
+
+    /// Paints without recording undo (used for the temporary AI Fill selection tint).
+    mutating func paintUntracked(u: Float, v: Float, radius: Float, color: SIMD4<Float>,
+                                 hardness: Float, opacity: Float) {
+        let saved = strokeTiles
+        strokeTiles = nil
+        paint(u: u, v: v, radius: radius, color: color, hardness: hardness, opacity: opacity)
+        strokeTiles = saved
+    }
+
+    /// Overwrites all pixels without recording undo (restores the pre-selection texture).
+    mutating func resetPixels(_ newPixels: [UInt8]) {
+        guard newPixels.count == pixels.count else { return }
+        pixels = newPixels
+    }
+
+    /// Replaces the whole texture as one undoable edit. Only the 64×64 tiles that differ are stored.
+    mutating func replaceUndoable(_ newPixels: [UInt8]) {
+        guard newPixels.count == pixels.count else { return }
+        let tilesX = (width + Self.tile - 1) / Self.tile, tilesY = (height + Self.tile - 1) / Self.tile
+        var saved: [Int: [UInt8]] = [:]
+        for ty in 0..<tilesY { for tx in 0..<tilesX {
+            let (x0, y0) = (tx * Self.tile, ty * Self.tile)
+            let (w, h) = (min(Self.tile, width - x0), min(Self.tile, height - y0))
+            var old = [UInt8](), changed = false
+            old.reserveCapacity(w * h * 4)
+            for row in 0..<h {
+                let a = ((y0 + row) * width + x0) * 4
+                if !changed, pixels[a..<a + w * 4] != newPixels[a..<a + w * 4] { changed = true }
+                old.append(contentsOf: pixels[a..<a + w * 4])
+            }
+            if changed { saved[ty * tilesX + tx] = old }
+        } }
+        guard !saved.isEmpty else { return }
+        pixels = newPixels
+        undoStack.append(saved)
+        isEdited = true
     }
 
     // MARK: dabs

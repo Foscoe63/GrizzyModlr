@@ -67,6 +67,11 @@ enum SmokeRunner {
         }
         log("boot: phase=\(runtime.state.phase)")
 
+        if env["MODELR_SMOKE_INPAINT"] == "1" {
+            try await runInpaintMode()
+            return
+        }
+
         if let slug = env["MODELR_SMOKE_DOWNLOAD"], !slug.isEmpty {
             try await runDownloadMode(runtime: runtime, slug: slug)
             return
@@ -208,6 +213,59 @@ enum SmokeRunner {
         guard bytes > 8 else { throw fail("exported GLB is empty") }
         log("export: \(dest.lastPathComponent) (\(bytes) bytes)")
         capture("06-exported")
+    }
+
+    // MARK: - AI Fill mode (real Stable Diffusion weights)
+
+    /// Fills a hole in a synthetic striped texture and checks the result stays identical outside
+    /// the mask. Writes before.png / after.png to the output folder.
+    private static func runInpaintMode() async throws {
+        guard let weights = ModelStore.textToImageDir() else { throw fail("text-to-image weights are not installed") }
+        let (w, h) = (1024, 1024)
+        var px = [UInt8](repeating: 255, count: w * h * 4)
+        for y in 0..<h { for x in 0..<w {
+            let band = (x / 48) % 2 == 0, i = (y * w + x) * 4
+            px[i] = band ? 150 : 110; px[i + 1] = band ? 95 : 70; px[i + 2] = band ? 55 : 40
+        } }
+        var mask = [Float](repeating: 0, count: w * h)
+        for y in 0..<h { for x in 0..<w where hypot(Float(x) - 520, Float(y) - 500) < 70 { mask[y * w + x] = 1 } }
+        var tinted = px
+        for i in 0..<(w * h) where mask[i] > 0 { tinted[i * 4] = 255; tinted[i * 4 + 1] = 40; tinted[i * 4 + 2] = 200 }
+        _ = MaterialOps.writePNG(tinted, width: w, height: h, to: outDir.appendingPathComponent("before.png"))
+
+        let b = try { () throws -> (x0: Int, y0: Int, x1: Int, y1: Int) in
+            guard let b = InpaintPatch.maskBounds(mask, width: w, height: h) else { throw fail("no mask") }
+            return b
+        }()
+        let win = InpaintPatch.window(bounds: b, width: w, height: h)
+        let n = InpaintPatch.modelSize
+        let rgb = InpaintPatch.extractRGB(px, width: w, window: win)
+        let grown = InpaintPatch.feathered(InpaintPatch.extractMask(mask, width: w, window: win),
+                                           width: n, height: n, grow: 4, blur: 0)
+        let req = InpaintEngine.Request(rgb: rgb, mask: grown, prompt: ToolDefaults.fallbackAIFillPrompt,
+                                        negative: "text, watermark, blurry, seams", steps: 25, strength: 0.85,
+                                        guidance: 6, seed: 7, weightsDir: weights)
+        let started = Date()
+        let result: [Float] = try await withCheckedThrowingContinuation { cont in
+            InpaintEngine().fill(req, onProgress: { _ in }) { outcome in
+                switch outcome {
+                case .success(let v): cont.resume(returning: v)
+                case .failure(let e): cont.resume(throwing: SmokeError(message: "\(e)"))
+                }
+            }
+        }
+        log(String(format: "inpaint: %.1fs", Date().timeIntervalSince(started)))
+        let weight = InpaintPatch.feathered(InpaintPatch.cropMask(mask, width: w, window: win),
+                                            width: win.side, height: win.side, grow: 2, blur: 2)
+        var merged = px
+        InpaintPatch.composite(&merged, width: w, result: result, window: win, weight: weight)
+        _ = MaterialOps.writePNG(merged, width: w, height: h, to: outDir.appendingPathComponent("after.png"))
+        guard Array(merged[0..<4]) == Array(px[0..<4]) else { throw fail("pixels outside the mask changed") }
+        let c = (500 * w + 520) * 4
+        log("center pixel: \(merged[c]) \(merged[c + 1]) \(merged[c + 2])")
+        guard abs(Int(merged[c]) - 130) < 70, abs(Int(merged[c + 2]) - 48) < 70 else {
+            throw fail("filled area is still far from the surrounding brown")
+        }
     }
 
     // MARK: - download-only mode (§4.3 against the live repo)
