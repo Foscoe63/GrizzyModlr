@@ -85,5 +85,12 @@ final class FlowRemeshTests: XCTestCase {
         let t = Date()
         let r = FlowRemesh.remesh(positions: mesh.positions, faces: mesh.faces, options: o)
         print("DBG real result", r.map { "quads \($0.quads.count) faces \($0.faces.count) fill \($0.filledTriangles) regular \($0.regularVertexShare)" } ?? "nil", "in", Date().timeIntervalSince(t))
+        if let out = ProcessInfo.processInfo.environment["FLOW_OUT"], let r {
+            var obj = r.positions.map { "v \($0.x) \($0.y) \($0.z)" }.joined(separator: "\n") + "\n"
+            for q in r.quads { obj += "f \(q.x + 1) \(q.y + 1) \(q.z + 1) \(q.w + 1)\n" }
+            let qs = Set(r.quads.flatMap { q in [[q.x, q.y, q.z], [q.x, q.z, q.w], [q.x, q.y, q.w], [q.y, q.z, q.w]].map { Set($0) } })
+            for t in r.faces where !qs.contains(Set([t.x, t.y, t.z])) { obj += "f \(t.x + 1) \(t.y + 1) \(t.z + 1)\n" }
+            try? obj.write(toFile: out, atomically: true, encoding: .utf8)
+        }
     }
 }
