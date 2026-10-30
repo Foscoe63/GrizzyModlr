@@ -288,6 +288,7 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.smoothIterations) private var smoothIterations = ToolDefaults.fallbackSmoothIterations
     @AppStorage(ToolDefaults.Key.holeEdges) private var holeEdges = ToolDefaults.fallbackHoleEdges
     @AppStorage(ToolDefaults.Key.booleanResolution) private var booleanResolution = ToolDefaults.fallbackBooleanResolution
+    @AppStorage(ToolDefaults.Key.booleanSharp) private var booleanSharp = true
     @AppStorage(ToolDefaults.Key.remeshResolution) private var remeshResolution = ToolDefaults.fallbackRemeshResolution
     @AppStorage(ToolDefaults.Key.symmetryAxis) private var symmetryAxis = ToolDefaults.fallbackSymmetryAxis
     @AppStorage(ToolDefaults.Key.symmetryKeepPositive) private var keepPositive = true
@@ -351,8 +352,11 @@ struct ToolSettingsView: View {
             }
             Section("Combine") {
                 LabeledContent("Boolean detail") {
-                    slider($booleanResolution, 64...256, step: 16, label: "\(Int(booleanResolution)) voxels")
+                    slider($booleanResolution, 64...384, step: 16, label: "\(Int(booleanResolution)) voxels")
                 }
+                Toggle("Keep sharp edges", isOn: $booleanSharp)
+                Text("Places result vertices on the creases where shapes meet, so cuts stay crisp at lower detail. Above 256 voxels uses a lot of memory.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Scenes") {
                 LabeledContent("Spacing for new objects") {
@@ -418,7 +422,7 @@ struct ToolSettingsView: View {
 
     private func reset() {
         decimateK = ToolDefaults.fallbackDecimateK; smoothIterations = ToolDefaults.fallbackSmoothIterations
-        holeEdges = ToolDefaults.fallbackHoleEdges; booleanResolution = ToolDefaults.fallbackBooleanResolution
+        booleanSharp = true; holeEdges = ToolDefaults.fallbackHoleEdges; booleanResolution = ToolDefaults.fallbackBooleanResolution
         remeshResolution = ToolDefaults.fallbackRemeshResolution; symmetryAxis = ToolDefaults.fallbackSymmetryAxis
         keepPositive = true; lodLevels = ToolDefaults.fallbackLODLevels
         sculptSize = ToolDefaults.fallbackSculptSize; sculptStrength = ToolDefaults.fallbackSculptStrength

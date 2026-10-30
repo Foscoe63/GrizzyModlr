@@ -136,7 +136,7 @@ extension MeshEditPopover {
                 miniSlider("Y", $offsetY, -1.5...1.5)
                 miniSlider("Z", $offsetZ, -1.5...1.5)
             }
-            Slider(value: $booleanRes, in: 64...256, step: 16)
+            Slider(value: $booleanRes, in: 64...384, step: 16)
             Button {
                 busy = true; message = nil
                 Task {

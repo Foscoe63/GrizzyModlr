@@ -9,6 +9,7 @@ enum ToolDefaults {
         static let smoothIterations = "tools.smoothIterations"
         static let holeEdges = "tools.holeEdges"
         static let booleanResolution = "tools.booleanResolution"
+        static let booleanSharp = "tools.booleanSharp"
         static let remeshResolution = "tools.remeshResolution"
         static let symmetryAxis = "tools.symmetryAxis"
         static let symmetryKeepPositive = "tools.symmetryKeepPositive"
@@ -69,6 +70,7 @@ enum ToolDefaults {
     static func smoothIterations(_ d: UserDefaults = .standard) -> Double { double(Key.smoothIterations, fallbackSmoothIterations, d) }
     static func holeEdges(_ d: UserDefaults = .standard) -> Double { double(Key.holeEdges, fallbackHoleEdges, d) }
     static func booleanResolution(_ d: UserDefaults = .standard) -> Double { double(Key.booleanResolution, fallbackBooleanResolution, d) }
+    static func booleanSharp(_ d: UserDefaults = .standard) -> Bool { d.object(forKey: Key.booleanSharp) as? Bool ?? true }
     static func remeshResolution(_ d: UserDefaults = .standard) -> Double { double(Key.remeshResolution, fallbackRemeshResolution, d) }
     static func sculptSize(_ d: UserDefaults = .standard) -> Double { double(Key.sculptSize, fallbackSculptSize, d) }
     static func sculptStrength(_ d: UserDefaults = .standard) -> Double { double(Key.sculptStrength, fallbackSculptStrength, d) }

@@ -26,6 +26,16 @@ final class MeshBooleanTests: XCTestCase {
         return (p, f)
     }
 
+    private func box(half h: Float) -> ([SIMD3<Float>], [SIMD3<UInt32>]) {
+        var p: [SIMD3<Float>] = []
+        for z in [-h, h] { for y in [-h, h] { for x in [-h, h] { p.append([x, y, z]) } } }
+        // vertex index = x + 2y + 4z; outward-wound quads split into triangles
+        let q: [[UInt32]] = [[0, 2, 3, 1], [4, 5, 7, 6], [0, 1, 5, 4], [2, 6, 7, 3], [0, 4, 6, 2], [1, 3, 7, 5]]
+        var f: [SIMD3<UInt32>] = []
+        for c in q { f.append([c[0], c[1], c[2]]); f.append([c[0], c[2], c[3]]) }
+        return (p, f)
+    }
+
     private func extent(_ p: [SIMD3<Float>]) -> (SIMD3<Float>, SIMD3<Float>) {
         var lo = SIMD3<Float>(repeating: .infinity), hi = SIMD3<Float>(repeating: -.infinity)
         for q in p { lo = simd_min(lo, q); hi = simd_max(hi, q) }
@@ -98,5 +108,31 @@ final class MeshBooleanTests: XCTestCase {
         let a = sphere()
         XCTAssertNil(MeshBoolean.apply(.intersect, a: a,
                                        b: .init(kind: .primitive(.sphere, center: [5, 0, 0], size: 0.5)), resolution: 48))
+    }
+
+    /// A box cut by an off-grid box: sharp placement lands the corners on the true extent,
+    /// while the plain mean rounds them inward by a good fraction of a voxel.
+    func testSharpPlacementKeepsBoxCorners() throws {
+        let a = box(half: 1)
+        let operand = MeshBoolean.Operand(kind: .primitive(.box, center: [0.37, 0, 0], size: 1))
+        func extentX(sharp: Bool) throws -> Float {
+            let r = try XCTUnwrap(MeshBoolean.apply(.intersect, a: a, b: operand, resolution: 20, sharp: sharp))
+            return extent(r.positions).1.x
+        }
+        let truth: Float = 1                                           // A's +x face
+        let plain = abs(try extentX(sharp: false) - truth)
+        let sharp = abs(try extentX(sharp: true) - truth)
+        XCTAssertLessThan(sharp, 0.02)
+        XCTAssertLessThanOrEqual(sharp, plain + 1e-6)
+        let lo = extent(try XCTUnwrap(MeshBoolean.apply(.intersect, a: a, b: operand, resolution: 20, sharp: true)).positions).0
+        XCTAssertLessThan(abs(lo.x - (-0.63)), 0.02)                  // B's -x face at 0.37 - 1
+    }
+
+    func testSharpSurfaceStaysClosed() throws {
+        let r = try XCTUnwrap(MeshBoolean.apply(.subtract, a: sphere(),
+                                                b: .init(kind: .primitive(.box, center: [0, 1, 0], size: 0.6)),
+                                                resolution: 48, sharp: true))
+        XCTAssertEqual(boundaryEdges(r.faces), 0)
+        XCTAssertGreaterThan(volume(r.positions, r.faces), 0)
     }
 }

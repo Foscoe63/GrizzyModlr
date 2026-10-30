@@ -123,20 +123,57 @@ enum MeshBoolean {
 
     static func combine(_ a: [Float], _ b: [Float], _ op: BooleanOp) -> [Float] {
         var out = a
+        combine(into: &out, b, op)
+        return out
+    }
+
+    /// `a = a op b` in place, so large grids need only two live fields.
+    static func combine(into a: inout [Float], _ b: [Float], _ op: BooleanOp) {
         for i in a.indices {
             switch op {
-            case .union: out[i] = min(a[i], b[i])
-            case .intersect: out[i] = max(a[i], b[i])
-            case .subtract: out[i] = max(a[i], -b[i])
+            case .union: a[i] = min(a[i], b[i])
+            case .intersect: a[i] = max(a[i], b[i])
+            case .subtract: a[i] = max(a[i], -b[i])
             }
         }
-        return out
     }
 
     // MARK: surface nets
 
+    /// Field gradient at a grid corner by central differences (one-sided at the border).
+    @inline(__always)
+    private static func gradient(_ f: [Float], _ g: Grid, _ x: Int, _ y: Int, _ z: Int) -> SIMD3<Float> {
+        let x0 = max(x - 1, 0), x1 = min(x + 1, g.nx - 1)
+        let y0 = max(y - 1, 0), y1 = min(y + 1, g.ny - 1)
+        let z0 = max(z - 1, 0), z1 = min(z + 1, g.nz - 1)
+        return SIMD3(f[g.index(x1, y, z)] - f[g.index(x0, y, z)],
+                     f[g.index(x, y1, z)] - f[g.index(x, y0, z)],
+                     f[g.index(x, y, z1)] - f[g.index(x, y, z0)])
+    }
+
+    /// Cell-local vertex that best fits the surface planes through the edge crossings
+    /// (dual-contouring QEF), pulled toward the crossings' mean for stability and kept
+    /// inside the cell. Reproduces sharp edges and corners that the plain mean rounds off.
+    private static func sharpVertex(points: [SIMD3<Float>], normals: [SIMD3<Float>],
+                                    mean: SIMD3<Float>) -> SIMD3<Float> {
+        var ata = simd_float3x3(0), atb = SIMD3<Float>.zero
+        for (p, n) in zip(points, normals) {
+            let q = p - mean
+            ata += simd_float3x3(columns: (n * n.x, n * n.y, n * n.z))
+            atb += n * simd_dot(n, q)
+        }
+        let lambda: Float = 0.08                              // keeps flat/edge cells well-posed
+        ata += simd_float3x3(diagonal: SIMD3(repeating: lambda))
+        let x = mean + ata.inverse * atb
+        guard x.x.isFinite, x.y.isFinite, x.z.isFinite else { return mean }
+        return simd_clamp(x, SIMD3(repeating: 0), SIMD3(repeating: 1))
+    }
+
     /// Extracts the zero level set (negative = inside) as an outward-wound triangle mesh.
-    static func surfaceNets(_ f: [Float], grid g: Grid) -> (positions: [SIMD3<Float>], faces: [SIMD3<UInt32>]) {
+    /// With `sharp`, vertices are placed by a QEF over the field's gradients so creases and
+    /// corners survive instead of being rounded to the voxel.
+    static func surfaceNets(_ f: [Float], grid g: Grid, sharp: Bool = false)
+        -> (positions: [SIMD3<Float>], faces: [SIMD3<UInt32>]) {
         let cx = g.nx - 1, cy = g.ny - 1, cz = g.nz - 1
         var cellVertex = [Int32](repeating: -1, count: cx * cy * cz)
         var positions: [SIMD3<Float>] = []
@@ -152,14 +189,25 @@ enum MeshBoolean {
             }
             guard neg != 0, neg != 8 else { continue }
             var sum = SIMD3<Float>.zero, n = 0
+            var pts: [SIMD3<Float>] = [], nrm: [SIMD3<Float>] = []
             for (a, b) in edges where (v[a] < 0) != (v[b] < 0) {
                 let t = v[a] / (v[a] - v[b])
                 let pa = SIMD3(Float(corners[a].0), Float(corners[a].1), Float(corners[a].2))
                 let pb = SIMD3(Float(corners[b].0), Float(corners[b].1), Float(corners[b].2))
-                sum += pa + (pb - pa) * t; n += 1
+                let hit = pa + (pb - pa) * t
+                sum += hit; n += 1
+                if sharp {
+                    let ga = gradient(f, g, x + corners[a].0, y + corners[a].1, z + corners[a].2)
+                    let gb = gradient(f, g, x + corners[b].0, y + corners[b].1, z + corners[b].2)
+                    let grad = ga + (gb - ga) * t
+                    let len = simd_length(grad)
+                    if len > 1e-12 { pts.append(hit); nrm.append(grad / len) }
+                }
             }
+            let mean = sum / Float(n)
+            let local = sharp && !pts.isEmpty ? sharpVertex(points: pts, normals: nrm, mean: mean) : mean
             cellVertex[cid(x, y, z)] = Int32(positions.count)
-            positions.append(g.position(x, y, z) + sum / Float(n) * g.cell)
+            positions.append(g.position(x, y, z) + local * g.cell)
         } } }
 
         var faces: [SIMD3<UInt32>] = []
@@ -228,7 +276,7 @@ enum MeshBoolean {
 
     /// `a op b` on a shared grid. Returns nil if either operand is empty or the result is empty.
     static func apply(_ op: BooleanOp, a: ([SIMD3<Float>], [SIMD3<UInt32>]), b: Operand,
-                      resolution: Int = 160) -> (positions: [SIMD3<Float>], faces: [SIMD3<UInt32>])? {
+                      resolution: Int = 160, sharp: Bool = true) -> (positions: [SIMD3<Float>], faces: [SIMD3<UInt32>])? {
         guard !a.0.isEmpty, !a.1.isEmpty else { return nil }
         var lo = SIMD3<Float>(repeating: .infinity), hi = SIMD3<Float>(repeating: -.infinity)
         for q in a.0 { lo = simd_min(lo, q); hi = simd_max(hi, q) }
@@ -236,13 +284,14 @@ enum MeshBoolean {
         // Subtract/intersect only ever keep material inside A, so A's box is enough.
         if op == .union { lo = simd_min(lo, blo); hi = simd_max(hi, bhi) }
         let g = grid(lo: lo, hi: hi, resolution: resolution)
-        let fa = meshField(positions: a.0, faces: a.1, grid: g)
+        var fa = meshField(positions: a.0, faces: a.1, grid: g)
         let fb: [Float]
         switch b.kind {
         case .primitive(let shape, let c, let s): fb = primitiveField(shape, center: c, size: s, grid: g)
         case .mesh(let p, let f): fb = meshField(positions: p, faces: f, grid: g)
         }
-        let out = surfaceNets(combine(fa, fb, op), grid: g)
+        combine(into: &fa, fb, op)
+        let out = surfaceNets(fa, grid: g, sharp: sharp)
         return out.faces.isEmpty ? nil : out
     }
 

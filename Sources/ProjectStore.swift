@@ -836,6 +836,7 @@ final class ProjectStore {
         guard let base = project.generations.first(where: { $0.id == baseID }) else {
             return "The source shape for this version is missing."
         }
+        let sharp = ToolDefaults.booleanSharp()
         let dir = folder(for: id)
         let srcURL = dir.appendingPathComponent(base.meshFileName)
         var otherURL: URL?
@@ -865,7 +866,8 @@ final class ProjectStore {
                 }
                 operand = .init(kind: .mesh(positions: b.positions, faces: b.faces))
             }
-            guard let r = MeshBoolean.apply(op, a: (a.positions, a.faces), b: operand, resolution: resolution) else {
+            guard let r = MeshBoolean.apply(op, a: (a.positions, a.faces), b: operand,
+                                            resolution: resolution, sharp: sharp) else {
                 return op == .intersect ? "The shapes don't overlap." : "The result would be empty."
             }
             let data = MeshDecimator.serialize(positions: r.positions, faces: r.faces)

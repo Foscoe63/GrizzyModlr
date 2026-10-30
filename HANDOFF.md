@@ -37,7 +37,7 @@ Settings has three tabs: **Models** (installs + models location), **Tools** (mes
 1. **Auto-retopology to true quads and edge-flow editing** (Roadmap 2.1). Remesh gives even triangles; OBJ export can pair them into quads, but nothing follows surface flow lines. Research-level.
 2. **Material editing by region**: limited to one dominant color of the texture (swatches in the material popover, soft edge, Settings → Tools → Material regions). No per-UV-island or paint-a-region selection yet.
 3. **Heal brush is classical diffusion inpainting**, not an AI fill.
-4. **Booleans are resolution-limited** (SDF + surface nets).
+4. **Booleans**: still voxel-based, but result vertices are now placed on creases (QEF over field gradients, Settings → Tools → Combine → Keep sharp edges), so cuts stay crisp at moderate detail; detail slider goes to 384 voxels (memory heavy above 256). Features thinner than a voxel are still lost.
 5. **Phase 3** (rigging, FBX/USDZ/3MF, batch, plugins, shortcuts) not started. Cheap wins listed in `ROADMAP.md`: USDZ export, keyboard shortcuts.
 
 ## Not yet verified by hand in the running app
