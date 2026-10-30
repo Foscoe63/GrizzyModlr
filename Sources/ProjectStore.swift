@@ -304,9 +304,15 @@ final class ProjectStore {
 
     // MARK: - CRUD
 
+    /// `template` nil uses the default template from Settings, if any.
     @discardableResult
-    func newProject() -> Project {
-        let project = Project(name: nextUntitledName())
+    func newProject(template: ProjectTemplate? = nil) -> Project {
+        var project = Project(name: nextUntitledName())
+        if let t = template ?? ProjectTemplate.defaultTemplate() {
+            if let q = QualityPreset(rawValue: t.quality) { project.quality = q }
+            if let q = PaintQuality(rawValue: t.paintQuality) { project.paintQuality = q }
+            project.removeBackground = t.removeBackground
+        }
         try? FileManager.default.createDirectory(at: folder(for: project.id), withIntermediateDirectories: true)
         projects.insert(project, at: 0)
         selection = project.id
@@ -322,6 +328,16 @@ final class ProjectStore {
         importErrors[id] = nil
         if selection == id { selection = projects.first?.id }
         save()
+    }
+
+    /// Saves a project's quality, paint quality and background setting as a custom template.
+    @discardableResult
+    func saveTemplate(from id: Project.ID, named name: String) -> Bool {
+        guard let p = project(id) else { return false }
+        let t = ProjectTemplate(name: name.trimmingCharacters(in: .whitespaces), detail: "Saved from “\(p.name)”.", icon: "star",
+                                quality: p.quality.rawValue, paintQuality: p.paintQuality.rawValue,
+                                removeBackground: p.removeBackground)
+        return ProjectTemplate.upsert(t)
     }
 
     func setFlowGuides(_ guides: [FlowGuide], for id: Project.ID) {

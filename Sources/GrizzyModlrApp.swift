@@ -22,6 +22,11 @@ struct GrizzyModlrApp: App {
             CommandGroup(replacing: .newItem) {
                 Button("New Project") { runtime.store.newProject() }
                     .keyboardShortcut("n", modifiers: .command)
+                Menu("New Project from Template") {
+                    ForEach(ProjectTemplate.all()) { t in
+                        Button(t.name) { runtime.store.newProject(template: t) }
+                    }
+                }
             }
             CommandMenu("Generate") {
                 Button("Generate / Regenerate Shape") {

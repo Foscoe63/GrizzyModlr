@@ -6,6 +6,8 @@ struct ContentView: View {
     @Environment(AppRuntime.self) private var runtime
     @Environment(ProjectStore.self) private var store
     @Environment(\.openSettings) private var openSettings
+    @State private var templateNameFor: Project.ID?
+    @State private var templateName = ""
 
     var body: some View {
         @Bindable var store = store
@@ -21,16 +23,33 @@ struct ContentView: View {
                         }
                 }
             }
+            .alert("Save as Template", isPresented: Binding(get: { templateNameFor != nil }, set: { if !$0 { templateNameFor = nil } })) {
+                TextField("Template name", text: $templateName)
+                Button("Save") {
+                    if let id = templateNameFor { store.saveTemplate(from: id, named: templateName) }
+                    templateName = ""; templateNameFor = nil
+                }
+                Button("Cancel", role: .cancel) { templateName = ""; templateNameFor = nil }
+            } message: { Text("Keeps this project's quality, paint quality and background setting for new projects.") }
             .navigationTitle("Projects")
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
             .toolbar {
                 ToolbarItem {
-                    Button {
-                        store.newProject()
+                    Menu {
+                        ForEach(ProjectTemplate.all()) { t in
+                            Button { store.newProject(template: t) } label: { Label(t.name, systemImage: t.icon) }
+                                .help(t.detail)
+                        }
+                        if let id = store.selection {
+                            Divider()
+                            Button("Save “\(store.project(id)?.name ?? "")” Settings as Template…") { templateNameFor = id }
+                        }
                     } label: {
                         Label("New Project", systemImage: "plus")
+                    } primaryAction: {
+                        store.newProject()
                     }
-                    .help("New Project")
+                    .help("New Project (click the arrow for templates)")
                 }
             }
             .overlay {

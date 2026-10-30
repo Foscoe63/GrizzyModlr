@@ -313,6 +313,8 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.printSizeMM) private var printSizeMM = ToolDefaults.fallbackPrintSizeMM
     @AppStorage(ToolDefaults.Key.slicer) private var slicerChoice = ToolDefaults.fallbackSlicer
     @AppStorage(ToolDefaults.Key.batchPaint) private var batchPaint = false
+    @AppStorage(ToolDefaults.Key.defaultTemplate) private var defaultTemplate = "none"
+    @State private var customTemplates = ProjectTemplate.custom()
     @AppStorage(ToolDefaults.Key.rigClip) private var rigClip = ToolDefaults.fallbackRigClip
     @AppStorage(ToolDefaults.Key.rigClipSpeed) private var rigClipSpeed = ToolDefaults.fallbackRigClipSpeed
     @AppStorage(ToolDefaults.Key.tsrThreshold) private var tsrThreshold = ToolDefaults.fallbackTSRThreshold
@@ -421,6 +423,23 @@ struct ToolSettingsView: View {
                 Text("3MF export scales the model so its longest side is this many millimetres and sets it on the bed (0 keeps the model's own units). \"Open in slicer\" in the export menu sends that 3MF to the chosen slicer.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Project templates") {
+                Picker("New projects start from", selection: $defaultTemplate) {
+                    Text("App defaults").tag("none")
+                    ForEach(ProjectTemplate.all()) { Text($0.name).tag($0.name) }
+                }
+                ForEach(customTemplates) { t in
+                    LabeledContent(t.name) {
+                        Button("Delete", role: .destructive) {
+                            customTemplates.removeAll { $0.name == t.name }
+                            ProjectTemplate.saveCustom(customTemplates)
+                            if defaultTemplate == t.name { defaultTemplate = "none" }
+                        }
+                    }
+                }
+                Text("File ▸ New Project from Template (or the arrow beside + in the sidebar) applies a template once. Save your own from a project's settings with the sidebar menu.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Rigging") {
                 Picker("Animation clip", selection: $rigClip) {
                     ForEach(PoseLibrary.clips, id: \.name) { Text($0.name).tag($0.name) }
@@ -495,6 +514,7 @@ struct ToolSettingsView: View {
         islandPadding = ToolDefaults.fallbackIslandPadding
         printSizeMM = ToolDefaults.fallbackPrintSizeMM; slicerChoice = ToolDefaults.fallbackSlicer
         batchPaint = false
+        defaultTemplate = "none"
         rigClip = ToolDefaults.fallbackRigClip; rigClipSpeed = ToolDefaults.fallbackRigClipSpeed
         tsrThreshold = ToolDefaults.fallbackTSRThreshold; tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
         tsrKeepLargest = true

@@ -35,6 +35,7 @@ enum ToolDefaults {
         static let slicer = "tools.slicer"
         static let batchPaint = "tools.batchPaint"
         static let rigClip = "tools.rigClip"
+        static let defaultTemplate = "tools.defaultTemplate"
         static let rigClipSpeed = "tools.rigClipSpeed"
         static let tsrThreshold = "tools.tsrThreshold"
         static let tsrForegroundRatio = "tools.tsrForegroundRatio"
