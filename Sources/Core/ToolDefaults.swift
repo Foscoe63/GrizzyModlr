@@ -20,6 +20,8 @@ enum ToolDefaults {
         static let paintOpacity = "tools.paintOpacity"
         static let sceneSpacing = "tools.sceneSpacing"
         static let exportQuads = "tools.exportQuads"
+        static let regionTolerance = "tools.regionTolerance"
+        static let regionFeather = "tools.regionFeather"
         static let tsrThreshold = "tools.tsrThreshold"
         static let tsrForegroundRatio = "tools.tsrForegroundRatio"
         static let tsrKeepLargest = "tools.tsrKeepLargest"
@@ -47,6 +49,8 @@ enum ToolDefaults {
     static let fallbackPaintHardness = 0.6
     static let fallbackPaintOpacity = 1.0
     static let fallbackSceneSpacing = 2.5
+    static let fallbackRegionTolerance = 0.12
+    static let fallbackRegionFeather = 0.10
     static let fallbackTSRThreshold = 25.0
     static let fallbackTSRForegroundRatio = 0.85
     static let fallbackReliefDepth = 0.25
@@ -72,6 +76,8 @@ enum ToolDefaults {
     static func paintHardness(_ d: UserDefaults = .standard) -> Double { double(Key.paintHardness, fallbackPaintHardness, d) }
     static func paintOpacity(_ d: UserDefaults = .standard) -> Double { double(Key.paintOpacity, fallbackPaintOpacity, d) }
     static func sceneSpacing(_ d: UserDefaults = .standard) -> Double { double(Key.sceneSpacing, fallbackSceneSpacing, d) }
+    static func regionTolerance(_ d: UserDefaults = .standard) -> Double { double(Key.regionTolerance, fallbackRegionTolerance, d) }
+    static func regionFeather(_ d: UserDefaults = .standard) -> Double { double(Key.regionFeather, fallbackRegionFeather, d) }
     static func exportQuads(_ d: UserDefaults = .standard) -> Bool { d.bool(forKey: Key.exportQuads) }
     static func tsrThreshold(_ d: UserDefaults = .standard) -> Float { Float(double(Key.tsrThreshold, fallbackTSRThreshold, d)) }
     static func tsrForegroundRatio(_ d: UserDefaults = .standard) -> Float { Float(double(Key.tsrForegroundRatio, fallbackTSRForegroundRatio, d)) }

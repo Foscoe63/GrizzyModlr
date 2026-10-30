@@ -939,13 +939,23 @@ final class ProjectStore {
         let mrSrc = base.paintedMRFileName.map { dir.appendingPathComponent($0) }
         let mrDst = mrSrc == nil ? nil : dir.appendingPathComponent("painted_\(newID.uuidString)_mr.png")
         let ok = await Task.detached(priority: .userInitiated) { () -> Bool in
+            // Region weights come from the albedo's colors and apply to every map (same UV layout).
+            var mask: [Float]? = nil
+            var maskSize = (w: 0, h: 0)
+            if let region = adj.region {
+                guard let a = MaterialOps.decode(albedoSrc) else { return false }
+                mask = MaterialRegion.mask(a.rgba, region: region)
+                maskSize = (a.width, a.height)
+            }
             if adj.altersAlbedo || mrSrc == nil || !adj.altersMR {
-                guard MaterialOps.processFile(albedoSrc, to: albedoDst, isMR: false, adj) else { return false }
+                guard MaterialOps.processFile(albedoSrc, to: albedoDst, isMR: false, adj,
+                                              mask: mask, maskSize: maskSize) else { return false }
             } else {
                 guard (try? FileManager.default.copyItem(at: albedoSrc, to: albedoDst)) != nil else { return false }
             }
             if let mrSrc, let mrDst {
-                guard MaterialOps.processFile(mrSrc, to: mrDst, isMR: true, adj) else { return false }
+                guard MaterialOps.processFile(mrSrc, to: mrDst, isMR: true, adj,
+                                              mask: mask, maskSize: maskSize) else { return false }
             }
             return true
         }.value

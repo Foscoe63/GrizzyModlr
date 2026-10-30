@@ -155,4 +155,4 @@ Comprehensive plan to evolve from image→3D to a full local 3D creation studio.
 
 ## Status notes (2026-10-30)
 
-Done: Phase 1, Phase 2 except auto-retopology to true quads and edge-flow editing, plus USDZ export. Partial: texture inpainting is classical diffusion (not AI), material editor is global (not per-region), booleans are resolution-limited. Not started: rigging, FBX, 3MF, slicer integration, batch, templates, plugins.
+Done: Phase 1, Phase 2 except auto-retopology to true quads and edge-flow editing, plus USDZ export. Partial: texture inpainting is classical diffusion (not AI), material editor can be limited to one texture color (no island or painted regions), booleans are resolution-limited. Not started: rigging, FBX, 3MF, slicer integration, batch, templates, plugins.

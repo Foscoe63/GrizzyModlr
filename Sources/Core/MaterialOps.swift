@@ -15,6 +15,8 @@ struct MaterialAdjustments: Equatable {
     var hue: Float = 0
     var roughness: Float = 1
     var metalness: Float = 1
+    /// When set, the edit applies only to texels near this color (soft edge); nil = everywhere.
+    var region: ColorRegion?
 
     var altersAlbedo: Bool { brightness != 0 || saturation != 1 || hue != 0 }
     var altersMR: Bool { roughness != 1 || metalness != 1 }
@@ -27,6 +29,7 @@ struct MaterialAdjustments: Equatable {
         if hue != 0 { parts.append(String(format: "hue %+.0f°", hue)) }
         if roughness != 1 { parts.append(String(format: "roughness ×%.2f", roughness)) }
         if metalness != 1 { parts.append(String(format: "metalness ×%.2f", metalness)) }
+        if region != nil { parts.append("selected color only") }
         return parts.joined(separator: ", ")
     }
 }
@@ -121,9 +124,17 @@ enum MaterialOps {
     }
 
     /// Adjust an albedo or MR PNG file into `dst`.
-    static func processFile(_ src: URL, to dst: URL, isMR: Bool, _ a: MaterialAdjustments) -> Bool {
+    /// With `mask` (the region weights over the albedo, sized `maskSize`), only the selected
+    /// texels change; the rest keep their original values.
+    static func processFile(_ src: URL, to dst: URL, isMR: Bool, _ a: MaterialAdjustments,
+                            mask: [Float]? = nil, maskSize: (w: Int, h: Int) = (0, 0)) -> Bool {
         guard var d = decode(src) else { return false }
+        let original = d.rgba
         if isMR { adjustMR(&d.rgba, a) } else { adjustAlbedo(&d.rgba, a) }
+        if let mask {
+            MaterialRegion.blend(original: original, edited: &d.rgba, mask: mask,
+                                 maskSize: maskSize, size: (d.width, d.height))
+        }
         return writePNG(d.rgba, width: d.width, height: d.height, to: dst)
     }
 }
