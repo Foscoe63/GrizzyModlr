@@ -14,7 +14,7 @@ enum MeshEdit: Equatable {
     /// Remesh in the model's own axis frame with sharp edges kept, giving quad rows along its flats.
     case quadRemesh(resolution: Int)
     /// Fits a humanoid skeleton, skins the mesh, and bakes the named pose (see `PoseLibrary`).
-    case pose(name: String)
+    case pose(name: String, rig: RigConfig = RigConfig())
     case flowRemesh(targetQuads: Int, featureAngle: Float, fallbackResolution: Int, guides: [FlowGuide] = [], guideStrength: Float = 40)
 
     var label: String {
@@ -25,7 +25,7 @@ enum MeshEdit: Equatable {
         case .symmetrize(let axis, let positive): return "mirrored \(positive ? "+" : "−")\(axis.rawValue.uppercased()) half"
         case .remesh(let n): return "remeshed at \(n)"
         case .quadRemesh(let n): return "quad remeshed at \(n)"
-        case .pose(let name): return "posed: \(name)"
+        case .pose(let name, _): return "posed: \(name)"
         case .flowRemesh(let q, _, _, _, _): return "flow remeshed to ~\(q) quads"
         }
     }
@@ -283,11 +283,11 @@ enum MeshOps {
             let q = apply(.quadRemesh(resolution: fallback), positions: positions, faces: faces)
             return Result(positions: q.positions, faces: q.faces,
                           note: "flow remesh didn't close; used the aligned remesh instead (\(q.note))", changed: q.changed)
-        case .pose(let name):
-            guard let pose = PoseLibrary.named(name), let skeleton = Skeleton.fit(to: positions) else {
+        case .pose(let name, let rig):
+            guard let pose = PoseLibrary.named(name), let skeleton = Skeleton.fit(to: positions, rig: rig) else {
                 return Result(positions: positions, faces: faces, note: "couldn't fit a skeleton to this mesh", changed: false)
             }
-            let weights = SkinWeights.compute(positions: positions, skeleton: skeleton)
+            let weights = SkinWeights.compute(positions: positions, skeleton: skeleton, faces: faces, smoothing: rig.smoothing)
             let height = (positions.map(\.y).max() ?? 0) - (positions.map(\.y).min() ?? 0)
             let posed = pose.apply(to: positions, skeleton: skeleton, weights: weights, height: height)
             guard posed.allSatisfy({ $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }) else {

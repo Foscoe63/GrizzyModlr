@@ -295,11 +295,18 @@ struct Project: Identifiable, Codable, Hashable {
     var sceneItemsRaw: [SceneItem]?
     /// Flow guide curves drawn on this project's shape (mesh coordinates), used by flow remesh.
     var flowGuidesRaw: [FlowGuide]?
+    /// Hand adjustments to the auto-rig (joint offsets, bone influence, weight smoothing).
+    var rigConfigRaw: RigConfig?
 
     init(id: UUID = UUID(), name: String, createdAt: Date = Date()) {
         self.id = id
         self.name = name
         self.createdAt = createdAt
+    }
+
+    var rigConfig: RigConfig {
+        get { rigConfigRaw ?? RigConfig() }
+        set { rigConfigRaw = newValue.isDefault ? nil : newValue }
     }
 
     var flowGuides: [FlowGuide] {

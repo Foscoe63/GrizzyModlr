@@ -33,14 +33,18 @@ enum RigGLB {
     enum RigError: Error { case notGLB, noSkeleton }
 
     /// `speed` scales clip time (2 = twice as fast).
-    static func encode(_ mesh: MeshExporter.MeshData, clip: PoseClip, speed: Float = 1) throws -> Data {
+    static func encode(_ mesh: MeshExporter.MeshData, clip: PoseClip, speed: Float = 1,
+                       rig: RigConfig = RigConfig(), naming: JointNaming = .generic) throws -> Data {
         let positions = (0..<mesh.vertCount).map { SIMD3(mesh.verts[$0 * 3], mesh.verts[$0 * 3 + 1], mesh.verts[$0 * 3 + 2]) }
-        guard let skeleton = Skeleton.fit(to: positions) else { throw RigError.noSkeleton }
-        let weights = SkinWeights.compute(positions: positions, skeleton: skeleton)
-        return try addRig(to: MeshExporter.encodeGLB(mesh), skeleton: skeleton, weights: weights, clip: clip, speed: speed)
+        guard let skeleton = Skeleton.fit(to: positions, rig: rig) else { throw RigError.noSkeleton }
+        let faces = (0..<mesh.faceCount).map { SIMD3(mesh.indices[$0 * 3], mesh.indices[$0 * 3 + 1], mesh.indices[$0 * 3 + 2]) }
+        let weights = SkinWeights.compute(positions: positions, skeleton: skeleton, faces: faces, smoothing: rig.smoothing)
+        return try addRig(to: MeshExporter.encodeGLB(mesh), skeleton: skeleton, weights: weights, clip: clip,
+                          speed: speed, naming: naming)
     }
 
-    static func addRig(to glb: Data, skeleton: Skeleton, weights: SkinWeights, clip: PoseClip, speed: Float) throws -> Data {
+    static func addRig(to glb: Data, skeleton: Skeleton, weights: SkinWeights, clip: PoseClip, speed: Float,
+                       naming: JointNaming = .generic) throws -> Data {
         // --- split the GLB
         func u32(_ o: Int) -> Int { Int(glb.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: o, as: UInt32.self) }) }
         guard glb.count > 28, u32(0) == 0x4654_6C67 else { throw RigError.notGLB }
@@ -84,7 +88,7 @@ enum RigGLB {
         let nodeBase = nodes.count
         for (i, j) in skeleton.joints.enumerated() {
             let local = j.parent < 0 ? j.position : j.position - skeleton.joints[j.parent].position
-            var node: [String: Any] = ["name": j.name, "translation": [local.x, local.y, local.z]]
+            var node: [String: Any] = ["name": naming.name(j.name), "translation": [local.x, local.y, local.z]]
             let kids = skeleton.children(of: i).map { nodeBase + $0 }
             if !kids.isEmpty { node["children"] = kids }
             nodes.append(node)

@@ -72,7 +72,8 @@ enum MeshExporter {
     /// albedo + metallic-roughness); the other formats have no standard slot for it.
     /// `quads` (OBJ only) merges adjacent triangles into quads where they pair cleanly.
     static func export(meshURL: URL, texture: URL?, metallicRoughness: URL? = nil,
-                       format: MeshExportFormat, quads: Bool = false, to dest: URL) throws {
+                       format: MeshExportFormat, quads: Bool = false, rig: RigConfig = RigConfig(),
+                       to dest: URL) throws {
         let mesh = try read(meshURL: meshURL, textureURL: texture,
                             metallicRoughnessURL: metallicRoughness)
         switch format {
@@ -82,7 +83,8 @@ enum MeshExporter {
         case .usdz: try USDZExporter.write(mesh, to: dest)
         case .glbRigged:
             let clip = PoseLibrary.clip(named: ToolDefaults.rigClip()) ?? PoseLibrary.clips[0]
-            try RigGLB.encode(mesh, clip: clip, speed: Float(ToolDefaults.rigClipSpeed())).write(to: dest)
+            try RigGLB.encode(mesh, clip: clip, speed: Float(ToolDefaults.rigClipSpeed()), rig: rig,
+                              naming: JointNaming(rawValue: ToolDefaults.rigNaming()) ?? .generic).write(to: dest)
         case .threemf: try ThreeMFExporter.encode(mesh, maxDimensionMM: ToolDefaults.printSizeMM()).write(to: dest)
         case .fbx:
             let dir = dest.deletingLastPathComponent()

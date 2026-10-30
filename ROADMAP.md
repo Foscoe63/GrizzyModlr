@@ -100,7 +100,7 @@ Comprehensive plan to evolve from image→3D to a full local 3D creation studio.
 #### 3.1 Rigging & Animation
 - 🟡 **Auto-rigging** — geometric 22-joint humanoid fit (not AI; upright front-facing figures only)
 - 🟡 **Pose library** — 6 poses, 3 clips (Walk, Wave, Arms up)
-- **Weight painting** — manual skin weight adjustment
+- 🟡 **Weight painting** — numeric per-joint reach + smoothing (no brush)
 - 🟡 **Animation export** — GLB with skin + clip (FBX animation not done)
 
 #### 3.2 Extended Export
@@ -111,7 +111,7 @@ Comprehensive plan to evolve from image→3D to a full local 3D creation studio.
 
 #### 3.3 Workflow Enhancements
 - ✅ **Batch processing** — Generate ▸ Batch Generate from Images (sequential; optional paint)
-- **Project templates** — presets for common use cases
+- ✅ **Project templates** — 6 built-ins, save your own, default in Settings
 - ✅ **Plugin/extension system** — JSON manifests run external tools on the exported model (docs/PLUGINS.md)
 - **Keyboard shortcuts** — power-user workflow
 

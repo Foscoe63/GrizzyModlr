@@ -42,6 +42,44 @@ final class RigTests: XCTestCase {
         XCTAssertNil(Skeleton.fit(to: []))
     }
 
+    func testJointOffsetAndReachApply() throws {
+        let f = figure()
+        let base = try XCTUnwrap(Skeleton.fit(to: f.positions))
+        var cfg = RigConfig()
+        cfg.setOffset("elbowL", SIMD3(0, 0.05, 0)); cfg.setInfluence("elbowL", 2)
+        let adj = try XCTUnwrap(Skeleton.fit(to: f.positions, rig: cfg))
+        let i = base.index(of: "elbowL")!
+        XCTAssertEqual(adj.joints[i].position.y - base.joints[i].position.y, 0.05, accuracy: 1e-4)   // height is 1
+        XCTAssertEqual(adj.joints[i].radius, base.joints[i].radius * 2, accuracy: 1e-6)
+        XCTAssertEqual(adj.joints[0], base.joints[0])
+        cfg.setOffset("elbowL", .zero); cfg.setInfluence("elbowL", 1)
+        XCTAssertTrue(cfg.isDefault)
+        let data = try JSONEncoder().encode(RigConfig(offsets: ["a": [1, 2, 3]], influence: [:], smoothing: 2))
+        XCTAssertEqual(try JSONDecoder().decode(RigConfig.self, from: data).smoothing, 2)
+    }
+
+    func testWeightSmoothingKeepsNormalizationAndSoftensJoints() throws {
+        let f = figure()
+        let sk = try XCTUnwrap(Skeleton.fit(to: f.positions))
+        let hard = SkinWeights.compute(positions: f.positions, skeleton: sk)
+        let soft = SkinWeights.compute(positions: f.positions, skeleton: sk, faces: f.faces, smoothing: 3)
+        for v in soft.weights { XCTAssertEqual(v.x + v.y + v.z + v.w, 1, accuracy: 1e-4) }
+        // Smoothing spreads influence: on average the strongest weight per vertex drops.
+        let avgMax: (SkinWeights) -> Float = { $0.weights.reduce(0) { $0 + $1.x } / Float($0.weights.count) }
+        XCTAssertLessThan(avgMax(soft), avgMax(hard))
+    }
+
+    func testJointNamingConventions() {
+        XCTAssertEqual(JointNaming.generic.name("shoulderL"), "shoulderL")
+        XCTAssertEqual(JointNaming.mixamo.name("shoulderL"), "mixamorig:LeftArm")
+        XCTAssertEqual(JointNaming.mixamo.name("hips"), "mixamorig:Hips")
+        XCTAssertEqual(JointNaming.unity.name("kneeR"), "RightLowerLeg")
+        XCTAssertEqual(JointNaming.unity.name("toeL"), "LeftToes")
+        let names = Set(Skeleton.names.map { JointNaming.mixamo.name($0) })
+        XCTAssertEqual(names.count, Skeleton.names.count)               // no two joints collide
+        XCTAssertEqual(Set(Skeleton.names.map { JointNaming.unity.name($0) }).count, Skeleton.names.count)
+    }
+
     func testBustLikeShapeIsRejected() {
         // Wide, short block with arms not out: head-and-shoulders proportions (h/width 1.5).
         var pos: [SIMD3<Float>] = []

@@ -22,3 +22,21 @@ It names a command to run on the exported current model. Pick it from **Model â–
 | `output` | Extension of `{output}`; if the tool writes that file it is revealed in Finder |
 
 The tool runs in a fresh temp folder; its exit status and the tail of its output are shown when it finishes.
+
+## Example: animated FBX via Blender
+
+GrizzyModlr writes animation only to GLB (its FBX export is static). A plugin can ask for the rigged
+GLB (`"input": "glbRigged"`, uses the clip and joint naming from Settings â†’ Rigging) and convert it:
+
+```json
+{
+  "name": "Rigged GLB to animated FBX (Blender)",
+  "command": "blender",
+  "args": ["-b", "--python-expr",
+           "import bpy; bpy.ops.wm.read_factory_settings(use_empty=True); bpy.ops.import_scene.gltf(filepath=r'{input}'); bpy.ops.export_scene.fbx(filepath=r'{output}', add_leaf_bones=False, bake_anim=True)"],
+  "input": "glbRigged",
+  "output": "fbx"
+}
+```
+
+Untested: Blender isn't installed on the development machine, so check the command line on yours.

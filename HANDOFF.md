@@ -107,3 +107,11 @@ The Python reference scripts and harness packages were in the session scratchpad
 ### Rig on the real bust scan (result)
 
 The bust (head + torso, h/width ≈ 1.5) is not a figure: the fitted skeleton put hips/legs inside the torso and "Arms down" changed nothing visible. `Skeleton.fit` now returns nil for non-T-pose shapes with h/width < 2, so the pose edit says "couldn't fit a skeleton" and the rigged GLB export throws, instead of producing nonsense. The rig has therefore still never run on a real full-body character — needs one to validate. Opt-in test: `TEST_RUNNER_RIG_MESH=<.mesh> [TEST_RUNNER_RIG_OUT=<dir>]` (the dir must be writable by the test sandbox, e.g. the scratchpad, not docs/).
+
+## Templates + rig tuning (round 3)
+
+- `ProjectTemplate` (built-ins + custom saved via sidebar menu; Settings picks the default): sets quality, paint quality, background removal at `newProject(template:)`.
+- `RigConfig` (per project, saved in `Project.rigConfigRaw`): joint offsets, per-joint reach, weight smoothing; "Adjust rig" in the Pose section shows the skeleton in the viewer (drawn through the guide-line layer, so it's yellow). Applied to Bake pose and rigged GLB export.
+- `JointNaming` (Settings → Rigging): generic / Mixamo / Unity names in the rigged GLB. Our skeleton has no clavicles or fingers.
+- **Not real weight painting** — numeric reach + smoothing only; no brush. **FBX animation** not implemented; plugin recipe in docs/PLUGINS.md (Blender, untested).
+- Still unvalidated on a real full-body character.

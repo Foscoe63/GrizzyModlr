@@ -1,6 +1,58 @@
 import Foundation
 import simd
 
+/// Per-project hand adjustments to the fitted rig.
+struct RigConfig: Codable, Hashable {
+    /// Joint name → [x, y, z] offset as a fraction of model height.
+    var offsets: [String: [Float]] = [:]
+    /// Joint name → multiplier on how far that joint's bones reach (default 1).
+    var influence: [String: Float] = [:]
+    /// Passes that average each vertex's weights with its neighbours' (softer joints).
+    var smoothing = 0
+
+    var isDefault: Bool { offsets.isEmpty && influence.isEmpty && smoothing == 0 }
+    func offset(_ joint: String) -> SIMD3<Float> {
+        guard let o = offsets[joint], o.count == 3 else { return .zero }
+        return SIMD3(o[0], o[1], o[2])
+    }
+    mutating func setOffset(_ joint: String, _ v: SIMD3<Float>) {
+        if simd_length(v) < 1e-5 { offsets[joint] = nil } else { offsets[joint] = [v.x, v.y, v.z] }
+    }
+    mutating func setInfluence(_ joint: String, _ k: Float) {
+        if abs(k - 1) < 1e-3 { influence[joint] = nil } else { influence[joint] = k }
+    }
+}
+
+/// Joint names written into exported rigs, so animation made for another rig can be
+/// retargeted by name. Our skeleton has no clavicles or fingers; importers skip what's missing.
+enum JointNaming: String, CaseIterable, Identifiable {
+    case generic, mixamo, unity
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .generic: return "Generic (hips, shoulderL…)"
+        case .mixamo: return "Mixamo (mixamorig:…)"
+        case .unity: return "Unity humanoid"
+        }
+    }
+
+    func name(_ joint: String) -> String {
+        guard self != .generic else { return joint }
+        let side = joint.hasSuffix("L") ? "Left" : (joint.hasSuffix("R") ? "Right" : "")
+        let base = side.isEmpty ? joint : String(joint.dropLast())
+        let map: [String: (mixamo: String, unity: String)] = [
+            "hips": ("Hips", "Hips"), "spine": ("Spine", "Spine"), "chest": ("Spine1", "Chest"),
+            "neck": ("Neck", "Neck"), "head": ("Head", "Head"), "headTop": ("HeadTop_End", "HeadTop_End"),
+            "shoulder": ("Arm", "UpperArm"), "elbow": ("ForeArm", "LowerArm"), "wrist": ("Hand", "Hand"),
+            "hand": ("Hand_End", "Hand_End"), "hip": ("UpLeg", "UpperLeg"), "knee": ("Leg", "LowerLeg"),
+            "ankle": ("Foot", "Foot"), "toe": ("ToeBase", "Toes"),
+        ]
+        guard let m = map[base] else { return joint }
+        let n = self == .mixamo ? m.mixamo : m.unity
+        return (self == .mixamo ? "mixamorig:" : "") + side + n
+    }
+}
+
 /// A humanoid skeleton fitted to a mesh, per-vertex skin weights, and poses.
 ///
 /// This is a geometric heuristic, not a learned rigger: it assumes an upright (+Y) humanoid
@@ -35,7 +87,7 @@ struct Skeleton: Equatable {
                           0, 18, 19, 20]
 
     /// Fits the standard skeleton to `positions`. Returns nil for degenerate input.
-    static func fit(to positions: [SIMD3<Float>]) -> Skeleton? {
+    static func fit(to positions: [SIMD3<Float>], rig: RigConfig = RigConfig()) -> Skeleton? {
         guard positions.count > 8 else { return nil }
         var lo = SIMD3<Float>(repeating: .infinity), hi = SIMD3<Float>(repeating: -.infinity)
         for p in positions { lo = simd_min(lo, p); hi = simd_max(hi, p) }
@@ -86,7 +138,13 @@ struct Skeleton: Equatable {
             Joint(name: names[i], parent: parents[i], position: pos[i],
                   radius: h * (radii[names[i]] ?? (names[i].hasPrefix("hip") || names[i].hasPrefix("knee") || names[i].hasPrefix("ankle") ? 0.07 : 0.05)))
         }
-        return Skeleton(joints: joints)
+        var result = Skeleton(joints: joints)
+        for i in result.joints.indices {
+            let name = result.joints[i].name
+            result.joints[i].position += rig.offset(name) * h
+            result.joints[i].radius *= rig.influence[name] ?? 1
+        }
+        return result
     }
 }
 
@@ -95,7 +153,8 @@ struct SkinWeights: Equatable {
     var joints: [SIMD4<UInt16>]
     var weights: [SIMD4<Float>]
 
-    static func compute(positions: [SIMD3<Float>], skeleton: Skeleton) -> SkinWeights {
+    static func compute(positions: [SIMD3<Float>], skeleton: Skeleton,
+                        faces: [SIMD3<UInt32>] = [], smoothing: Int = 0) -> SkinWeights {
         // Bone segments: joint j owns segments to each of its children.
         var segments: [(joint: Int, a: SIMD3<Float>, b: SIMD3<Float>, radius: Float)] = []
         for j in skeleton.joints.indices {
@@ -121,7 +180,35 @@ struct SkinWeights: Equatable {
             for (k, e) in top.enumerated() { jv[k] = UInt16(e.key); wv[k] = e.value / max(sum, 1e-20) }
             js.append(jv); ws.append(wv)
         }
-        return SkinWeights(joints: js, weights: ws)
+        var result = SkinWeights(joints: js, weights: ws)
+        if smoothing > 0, !faces.isEmpty { result.smooth(faces: faces, passes: smoothing) }
+        return result
+    }
+
+    /// Averages each vertex's weights with its neighbours' (keeps the strongest four).
+    mutating func smooth(faces: [SIMD3<UInt32>], passes: Int) {
+        var adjacency = [[Int]](repeating: [], count: joints.count)
+        for f in faces {
+            let v = [Int(f.x), Int(f.y), Int(f.z)]
+            for k in 0..<3 { adjacency[v[k]].append(v[(k + 1) % 3]); adjacency[v[k]].append(v[(k + 2) % 3]) }
+        }
+        for _ in 0..<passes {
+            var nj = joints, nw = weights
+            for v in joints.indices {
+                var acc = [UInt16: Float]()
+                func add(_ i: Int, _ scale: Float) {
+                    for k in 0..<4 where weights[i][k] > 0 { acc[joints[i][k], default: 0] += weights[i][k] * scale }
+                }
+                add(v, 2)
+                for n in adjacency[v] { add(n, 1) }
+                let top = acc.sorted { $0.value > $1.value }.prefix(4)
+                let sum = top.reduce(Float(0)) { $0 + $1.value }
+                var jv = SIMD4<UInt16>(repeating: 0), wv = SIMD4<Float>(repeating: 0)
+                for (k, e) in top.enumerated() { jv[k] = e.key; wv[k] = e.value / max(sum, 1e-20) }
+                nj[v] = jv; nw[v] = wv
+            }
+            joints = nj; weights = nw
+        }
     }
 }
 

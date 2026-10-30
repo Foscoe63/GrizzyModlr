@@ -340,6 +340,29 @@ final class ProjectStore {
         return ProjectTemplate.upsert(t)
     }
 
+    func setRigConfig(_ config: RigConfig, for id: Project.ID) {
+        guard let i = projects.firstIndex(where: { $0.id == id }), projects[i].rigConfig != config else { return }
+        projects[i].rigConfig = config
+        save()
+    }
+
+    /// The fitted skeleton as line segments (mesh coordinates) for the viewer, or nil when the
+    /// shape isn't a standing figure.
+    func rigPreview(for id: Project.ID) async -> [FlowGuide]? {
+        guard let project = project(id), let cur = project.currentGeneration else { return nil }
+        let baseID = cur.kind == .shape ? cur.id : cur.sourceShapeID
+        guard let base = project.generations.first(where: { $0.id == baseID }) else { return nil }
+        let src = folder(for: id).appendingPathComponent(base.meshFileName)
+        let rig = project.rigConfig
+        return await Task.detached(priority: .userInitiated) { () -> [FlowGuide]? in
+            guard let raw = try? Data(contentsOf: src), let mesh = MeshDecimator.parse(raw),
+                  let sk = Skeleton.fit(to: mesh.positions, rig: rig) else { return nil }
+            return sk.joints.filter { $0.parent >= 0 }.map {
+                FlowGuide(points: [sk.joints[$0.parent].position, $0.position])
+            }
+        }.value
+    }
+
     func setFlowGuides(_ guides: [FlowGuide], for id: Project.ID) {
         guard let i = projects.firstIndex(where: { $0.id == id }), projects[i].flowGuides != guides else { return }
         projects[i].flowGuides = guides

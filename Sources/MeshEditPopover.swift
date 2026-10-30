@@ -12,6 +12,7 @@ struct MeshEditPopover: View {
     var guides: [FlowGuide] = []
     var onDrawGuides: () -> Void = {}
     var onClearGuides: () -> Void = {}
+    var onRigOverlay: ([FlowGuide]) -> Void = { _ in }
 
     @State private var targetK: Double = ToolDefaults.decimateK()
     @State private var smoothIterations: Double = ToolDefaults.smoothIterations()
@@ -22,6 +23,8 @@ struct MeshEditPopover: View {
     @State private var lodText: String = UserDefaults.standard.string(forKey: ToolDefaults.Key.lodLevels) ?? ToolDefaults.fallbackLODLevels
     @State private var busy = false
     @State private var poseName = PoseLibrary.all[1].name
+    @State private var rigJoint = "wristL"
+    @State private var rigNote: String?
     @State private var booleanOp: BooleanOp = .subtract
     @State private var operandChoice = "sphere"          // a BooleanPrimitive raw value or a version UUID
     @State private var operandSize: Double = 0.5
@@ -177,10 +180,56 @@ extension MeshEditPopover {
                 ForEach(PoseLibrary.all, id: \.name) { Text($0.name).tag($0.name) }
             }
             .labelsHidden()
-            action("Bake pose into mesh", "figure.stand") { .pose(name: poseName) }
+            action("Bake pose into mesh", "figure.stand") { .pose(name: poseName, rig: store.project(projectID)?.rigConfig ?? RigConfig()) }
+            rigTuning
             Text("Fits a humanoid skeleton to an upright figure and bends the mesh. Saved as a new version. For a rigged, animated file use Export ▸ GLB · rigged.")
                 .font(.caption2).foregroundStyle(.tertiary)
         }
+    }
+
+    private var rigConfig: RigConfig { store.project(projectID)?.rigConfig ?? RigConfig() }
+
+    private func editRig(_ change: (inout RigConfig) -> Void) {
+        var c = rigConfig
+        change(&c)
+        store.setRigConfig(c, for: projectID)
+        Task {
+            let overlay = await store.rigPreview(for: projectID)
+            rigNote = overlay == nil ? "This shape doesn't look like a standing figure." : nil
+            onRigOverlay(overlay ?? [])
+        }
+    }
+
+    @ViewBuilder
+    fileprivate var rigTuning: some View {
+        DisclosureGroup("Adjust rig") {
+            VStack(alignment: .leading, spacing: 6) {
+                Button("Show skeleton") { editRig { _ in } }.controlSize(.small)
+                Picker("Joint", selection: $rigJoint) {
+                    ForEach(Skeleton.names, id: \.self) { Text($0).tag($0) }
+                }
+                let off = rigConfig.offset(rigJoint)
+                ForEach(0..<3, id: \.self) { axis in
+                    miniSlider(["X", "Y", "Z"][axis],
+                               Binding(get: { Double(off[axis]) }, set: { v in
+                                   editRig { c in var o = c.offset(rigJoint); o[axis] = Float(v); c.setOffset(rigJoint, o) } }),
+                               -0.15...0.15)
+                }
+                miniSlider("Reach", Binding(get: { Double(rigConfig.influence[rigJoint] ?? 1) }, set: { v in
+                    editRig { $0.setInfluence(rigJoint, Float(v)) } }), 0.3...3)
+                HStack {
+                    Text("Smooth weights").font(.caption)
+                    Stepper("\(rigConfig.smoothing)", value: Binding(get: { rigConfig.smoothing }, set: { v in
+                        editRig { $0.smoothing = v } }), in: 0...6).font(.caption)
+                }
+                Button("Reset rig adjustments") { editRig { $0 = RigConfig() } }
+                    .controlSize(.small).disabled(rigConfig.isDefault)
+                if let rigNote { Text(rigNote).font(.caption2).foregroundStyle(.orange) }
+                Text("Offsets move a joint (fraction of height). Reach scales how far its bones pull the surface. Smooth weights softens joints. This is numeric tuning, not brush weight painting.")
+                    .font(.caption2).foregroundStyle(.tertiary)
+            }
+        }
+        .font(.caption)
     }
 
     @ViewBuilder

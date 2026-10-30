@@ -316,6 +316,7 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.defaultTemplate) private var defaultTemplate = "none"
     @State private var customTemplates = ProjectTemplate.custom()
     @AppStorage(ToolDefaults.Key.rigClip) private var rigClip = ToolDefaults.fallbackRigClip
+    @AppStorage(ToolDefaults.Key.rigNaming) private var rigNaming = ToolDefaults.fallbackRigNaming
     @AppStorage(ToolDefaults.Key.rigClipSpeed) private var rigClipSpeed = ToolDefaults.fallbackRigClipSpeed
     @AppStorage(ToolDefaults.Key.tsrThreshold) private var tsrThreshold = ToolDefaults.fallbackTSRThreshold
     @AppStorage(ToolDefaults.Key.tsrForegroundRatio) private var tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
@@ -444,8 +445,11 @@ struct ToolSettingsView: View {
                 Picker("Animation clip", selection: $rigClip) {
                     ForEach(PoseLibrary.clips, id: \.name) { Text($0.name).tag($0.name) }
                 }
+                Picker("Joint names", selection: $rigNaming) {
+                    ForEach(JointNaming.allCases) { Text($0.label).tag($0.rawValue) }
+                }
                 LabeledContent("Clip speed") { slider($rigClipSpeed, 0.25...3, step: 0.25, label: String(format: "×%.2f", rigClipSpeed)) }
-                Text("The rigged GLB export fits a standard humanoid skeleton (works on upright, front-facing figures with arms out or hanging) and embeds this clip. Poses can also be baked into the mesh from the mesh-edit popover.")
+                Text("The rigged GLB export fits a standard humanoid skeleton (works on upright, front-facing figures with arms out or hanging) and embeds this clip. Joint names let Mixamo or Unity animation retarget onto the export by name. Poses can also be baked into the mesh from the mesh-edit popover.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Batch and plugins") {
@@ -515,7 +519,7 @@ struct ToolSettingsView: View {
         printSizeMM = ToolDefaults.fallbackPrintSizeMM; slicerChoice = ToolDefaults.fallbackSlicer
         batchPaint = false
         defaultTemplate = "none"
-        rigClip = ToolDefaults.fallbackRigClip; rigClipSpeed = ToolDefaults.fallbackRigClipSpeed
+        rigClip = ToolDefaults.fallbackRigClip; rigClipSpeed = ToolDefaults.fallbackRigClipSpeed; rigNaming = ToolDefaults.fallbackRigNaming
         tsrThreshold = ToolDefaults.fallbackTSRThreshold; tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
         tsrKeepLargest = true
         reliefDepth = ToolDefaults.fallbackReliefDepth; reliefResolution = ToolDefaults.fallbackReliefResolution

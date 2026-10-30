@@ -14,6 +14,7 @@ struct ProjectDetailView: View {
     @State private var showHistory = false
     @State private var showMeshEdit = false
     @State private var flowOverlay: FlowOverlay?
+    @State private var rigOverlay: [FlowGuide] = []   // skeleton bones drawn with the guide-line layer
     @State private var flowBusy = false
     @State private var flowGuides: [FlowGuide] = []
     @State private var drawingGuides = false
@@ -84,7 +85,8 @@ struct ProjectDetailView: View {
             if isEditingMask { editToolbar } else { normalToolbar }
         }
         .focusedSceneValue(\.projectActions, projectActions)
-        .onChange(of: project.currentGeneration?.id) { _, _ in flowOverlay = nil }
+        .onChange(of: project.currentGeneration?.id) { _, _ in flowOverlay = nil; rigOverlay = [] }
+        .onChange(of: showMeshEdit) { _, shown in if !shown { rigOverlay = [] } }
         .onAppear { flowGuides = project.flowGuides }
         .onChange(of: project.id) { _, _ in flowGuides = project.flowGuides; drawingGuides = false }
         .onChange(of: flowGuides) { _, guides in store.setFlowGuides(guides, for: project.id) }
@@ -579,7 +581,7 @@ struct ProjectDetailView: View {
         ZStack {
             if let content = displayedContent {
                 MeshViewer(content: content, onLoading: { objectLoading = $0 }, sculpt: sculpt, command: shapeViewerCommand,
-                           overlay: flowOverlay, guides: flowGuides, guideRecorder: drawingGuides ? guideRecorder : nil)
+                           overlay: flowOverlay, guides: flowGuides + rigOverlay, guideRecorder: drawingGuides ? guideRecorder : nil)
             } else if shapeJob.isRunning {
                 PointCloud()                     // animation while loading (no content yet)
                     .frame(width: 150, height: 150)
@@ -692,7 +694,7 @@ struct ProjectDetailView: View {
                             }, onClearGuides: {
                                 flowGuides = []
                                 flowOverlay = nil
-                            }).environment(store)
+                            }, onRigOverlay: { rigOverlay = $0 }).environment(store)
                         }
                     }
                     Menu {
@@ -772,11 +774,12 @@ struct ProjectDetailView: View {
         panel.begin { response in
             guard response == .OK, let dest = panel.url else { return }
             let quads = ToolDefaults.exportQuads()
+            let rig = project.rigConfig
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
                     try MeshExporter.export(meshURL: meshURL, texture: texture,
                                             metallicRoughness: metallicRoughness,
-                                            format: format, quads: quads, to: dest)
+                                            format: format, quads: quads, rig: rig, to: dest)
                     DispatchQueue.main.async { NSWorkspace.shared.activateFileViewerSelecting([dest]) }
                 } catch {
                     DispatchQueue.main.async {

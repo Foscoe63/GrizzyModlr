@@ -44,4 +44,10 @@ final class ToolPluginTests: XCTestCase {
         XCTAssertNotEqual(result.status, 0)
         XCTAssertNil(result.produced)
     }
+
+    func testRiggedInputFormatResolves() {
+        let p = ToolPlugin(name: "x", command: "true", input: "glbRigged")
+        XCTAssertEqual(p.inputFormat, .glbRigged)
+        XCTAssertEqual(p.inputFormat.ext, "glb")
+    }
 }
