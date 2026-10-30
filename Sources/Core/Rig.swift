@@ -123,7 +123,10 @@ struct Skeleton: Equatable {
         // is not, and a humanoid skeleton squashed into it only produces nonsense poses.
         if !tPose, h / max(hi.x - lo.x, 1e-6) < 2.0 { return nil }
         let shoulderX = h * 0.11
-        let wristX = tPose ? max(shoulderX * 2.5, reach * 0.9) : shoulderX + h * 0.04
+        // Arms hanging: how far out the model reaches around hip height tells how splayed they are.
+        let hipBand = positions.filter { abs($0.y - y(0.50)) < h * 0.04 }
+        let hangReach = (hipBand.map { abs($0.x - cx) }.max() ?? 0) - h * 0.03
+        let wristX = tPose ? max(shoulderX * 2.5, reach * 0.9) : max(shoulderX + h * 0.04, hangReach)
         let elbowX = shoulderX + (wristX - shoulderX) * 0.5
         let shoulderY = y(0.80)
         let elbowY = tPose ? shoulderY : y(0.62)

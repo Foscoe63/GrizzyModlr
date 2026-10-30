@@ -322,4 +322,72 @@ final class RigTests: XCTestCase {
                 .write(to: URL(fileURLWithPath: out).appendingPathComponent("rigged-\(name.replacingOccurrences(of: " ", with: "-")).glb"))
         }
     }
+
+    // MARK: tube figures (smoother than boxes, with proper limbs)
+
+    /// Capsule-ish figure built from tubes along limb segments. `tPose` puts arms out sideways.
+    static func tubeFigure(tPose: Bool) -> [SIMD3<Float>] {
+        var pts: [SIMD3<Float>] = []
+        func tube(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ r0: Float, _ r1: Float) {
+            let axis = simd_normalize(b - a)
+            let helper: SIMD3<Float> = abs(axis.y) < 0.9 ? [0, 1, 0] : [1, 0, 0]
+            let u = simd_normalize(simd_cross(axis, helper)), v = simd_cross(axis, u)
+            let len = simd_length(b - a)
+            let rings = max(4, Int(len / 0.02))
+            for i in 0...rings {
+                let t = Float(i) / Float(rings), c = a + (b - a) * t, r = r0 + (r1 - r0) * t
+                for k in 0..<16 {
+                    let th = Float(k) / 16 * 2 * .pi
+                    pts.append(c + (u * cos(th) + v * sin(th)) * r)
+                }
+            }
+        }
+        // Height 1.8: feet at 0, head top at 1.8.
+        tube([0, 0.95, 0], [0, 1.45, 0], 0.17, 0.19)          // torso
+        tube([0, 1.45, 0], [0, 1.55, 0], 0.06, 0.06)          // neck
+        tube([0, 1.58, 0], [0, 1.78, 0], 0.095, 0.095)        // head
+        for s: Float in [1, -1] {
+            tube([0.09 * s, 0.95, 0], [0.10 * s, 0.50, 0], 0.085, 0.06)     // thigh
+            tube([0.10 * s, 0.50, 0], [0.10 * s, 0.08, 0], 0.06, 0.045)     // shin
+            tube([0.10 * s, 0.05, 0.0], [0.10 * s, 0.03, 0.12], 0.04, 0.035) // foot
+            let shoulder = SIMD3<Float>(0.20 * s, 1.40, 0)
+            let elbow: SIMD3<Float> = tPose ? [0.48 * s, 1.40, 0] : [0.30 * s, 1.15, 0]
+            let wrist: SIMD3<Float> = tPose ? [0.74 * s, 1.40, 0] : [0.36 * s, 0.90, 0]
+            tube(shoulder, elbow, 0.055, 0.045); tube(elbow, wrist, 0.045, 0.035)
+            tube(wrist, wrist + simd_normalize(wrist - elbow) * 0.17, 0.035, 0.03)   // hand
+        }
+        return pts
+    }
+
+    func testTubeFiguresFitAndPose() throws {
+        for tPose in [true, false] {
+            let pts = Self.tubeFigure(tPose: tPose)
+            let sk = try XCTUnwrap(Skeleton.fit(to: pts), "tPose \(tPose) not fitted")
+            let w = SkinWeights.compute(positions: pts, skeleton: sk)
+            let lo = pts.reduce(SIMD3<Float>(repeating: .infinity), simd_min), hi = pts.reduce(SIMD3<Float>(repeating: -.infinity), simd_max)
+            let h = hi.y - lo.y
+            // Joints sit near the real anatomy (tolerances are fractions of height).
+            let wrist = sk.joints[sk.index(of: "wristL")!].position
+            XCTAssertEqual(wrist.x, tPose ? 0.74 : 0.36, accuracy: Float(tPose ? 0.15 : 0.04) * h, "wrist x tPose=\(tPose)")
+            let knee = sk.joints[sk.index(of: "kneeL")!].position
+            XCTAssertEqual(knee.y, 0.50, accuracy: 0.1 * h)
+            for name in ["Arms down", "Wave", "Walk", "Arms up"] {
+                let posed = PoseLibrary.named(name)!.apply(to: pts, skeleton: sk, weights: w, height: h)
+                XCTAssertTrue(posed.allSatisfy { $0.x.isFinite && $0.y.isFinite && $0.z.isFinite })
+                if let dump = ProcessInfo.processInfo.environment["RIG_FIGURE_OUT"] {
+                    let mn = posed.reduce(SIMD3<Float>(repeating: .infinity), simd_min), mx = posed.reduce(SIMD3<Float>(repeating: -.infinity), simd_max)
+                    var s = "<svg xmlns='http://www.w3.org/2000/svg' width='520' height='520' viewBox='-1 -0.1 2 2.2'><rect x='-1' y='-0.1' width='2' height='2.2' fill='white'/>"
+                    for (i, p) in posed.enumerated() where i % 2 == 0 {
+                        s += "<circle cx='\(p.x)' cy='\(1.9 - p.y)' r='0.006' fill='#4477aa'/>"
+                    }
+                    for j in sk.joints where j.parent >= 0 {
+                        let a = sk.joints[j.parent].position, b = j.position
+                        s += "<line x1='\(a.x)' y1='\(1.9 - a.y)' x2='\(b.x)' y2='\(1.9 - b.y)' stroke='#cc3333' stroke-width='0.01'/>"
+                    }
+                    _ = (mn, mx)
+                    try? (s + "</svg>").write(toFile: dump + "/fig-\(tPose ? "T" : "A")-\(name.replacingOccurrences(of: " ", with: "-")).svg", atomically: true, encoding: .utf8)
+                }
+            }
+        }
+    }
 }
