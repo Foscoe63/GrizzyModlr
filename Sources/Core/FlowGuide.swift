@@ -4,7 +4,7 @@ import simd
 
 /// A curve drawn on the model that the flow must follow (around an eye, along a limb, down a seam).
 /// Points are in mesh coordinates; the cross field is pinned to the curve's direction near it.
-struct FlowGuide: Equatable {
+struct FlowGuide: Hashable, Codable {
     var points: [SIMD3<Float>]
 
     /// Straight pieces `(start, end)` of the curve, split so none is longer than `spacing`.

@@ -85,6 +85,9 @@ struct ProjectDetailView: View {
         }
         .focusedSceneValue(\.projectActions, projectActions)
         .onChange(of: project.currentGeneration?.id) { _, _ in flowOverlay = nil }
+        .onAppear { flowGuides = project.flowGuides }
+        .onChange(of: project.id) { _, _ in flowGuides = project.flowGuides; drawingGuides = false }
+        .onChange(of: flowGuides) { _, guides in store.setFlowGuides(guides, for: project.id) }
     }
 
     /// Show the paint strip while painting, on a paint error, or when viewing a paint

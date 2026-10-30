@@ -63,7 +63,7 @@ enum FlowRemesh {
         fieldOptions.guides = o.guides
         fieldOptions.guideWeight = o.guideStrength
         let field = CrossField.compute(topology: topology, options: fieldOptions)
-        let pf = PositionField(field: field, rho: rho, iterations: o.positionIterations)
+        let pf = PositionField(field: field, rho: rho, iterations: o.positionIterations, guides: o.guides)
 
         guard var mesh = extract(pf, maxHoleEdges: o.maxHoleEdges) else { return nil }
         // Back onto the input surface.

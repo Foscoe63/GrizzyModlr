@@ -89,7 +89,10 @@ enum MeshBoolean {
             } }
         }
         for k in 0..<g.nz { for j in 0..<g.ny {
-            let xs = crossings[k * g.ny + j].sorted()
+            var xs = crossings[k * g.ny + j].sorted()
+            // An odd count means the mesh is open or self-overlapping on this ray; left alone the last
+            // crossing would make everything beyond it "inside" (a bar out to the grid edge).
+            if xs.count % 2 == 1 { xs.removeLast() }
             var p = 0, inside = false
             for i in 0..<g.nx {
                 let x = g.origin.x + Float(i) * g.cell

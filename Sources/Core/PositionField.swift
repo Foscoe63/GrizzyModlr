@@ -18,7 +18,7 @@ struct PositionField {
 
     var normal: [SIMD3<Float>] { topology.vertexNormal }
 
-    init(field: CrossField, rho: Float, iterations: Int = 120) {
+    init(field: CrossField, rho: Float, iterations: Int = 120, guides: [FlowGuide] = []) {
         let t = field.topology
         topology = t
         self.rho = rho
@@ -52,6 +52,31 @@ struct PositionField {
             let phi = simd_length(z) > 1e-12 ? atan2(z.y, z.x) / 4 : 0
             orient[v] = cos(phi) * e1 + sin(phi) * e2
         }
+        // Guides: vertices within reach of a guide curve take its direction as their lattice axis and are
+        // pinned so a lattice row runs through the curve itself.
+        var pins = [SIMD3<Float>?](repeating: nil, count: n)
+        if !guides.isEmpty {
+            var samples: [(point: SIMD3<Float>, dir: SIMD3<Float>)] = []
+            for g in guides {
+                for (a, b) in g.segments(maxLength: rho * 0.25) {
+                    let d = b - a
+                    if simd_length(d) > 1e-12 { samples.append(((a + b) / 2, simd_normalize(d))) }
+                }
+            }
+            for v in 0..<n {
+                var best: Int?, bestD = rho * 0.6
+                for (k, s) in samples.enumerated() {
+                    let d = simd_distance(s.point, t.positions[v])
+                    if d < bestD { bestD = d; best = k }
+                }
+                guard let k = best else { continue }
+                let nv = t.vertexNormal[v]
+                let tangent = samples[k].dir - nv * simd_dot(samples[k].dir, nv)
+                guard simd_length(tangent) > 0.3 else { continue }
+                orient[v] = simd_normalize(tangent)
+                pins[v] = samples[k].point
+            }
+        }
         orientation = orient
         // Random (but deterministic) lattice offsets break the symmetry that would otherwise leave
         // every vertex's lattice centered on itself; the optimization then pulls them into agreement.
@@ -64,7 +89,7 @@ struct PositionField {
             let b = simd_cross(t.vertexNormal[v], orient[v])
             return t.positions[v] + orient[v] * random() * rho + b * random() * rho
         }
-        optimize(iterations: iterations)
+        optimize(iterations: iterations, pins: pins)
     }
 
     private static func anyTangent(_ n: SIMD3<Float>) -> SIMD3<Float> {
@@ -89,6 +114,8 @@ struct PositionField {
         var weight: [Float]
         var adjacency: [[Int]]
         var anchor: [SIMD3<Float>] = []
+        /// Point a pinned node's lattice row must pass through (guide curves), or nil.
+        var pin: [SIMD3<Float>?] = []
 
         @inline(__always)
         static func snap(_ p: SIMD3<Float>, origin: SIMD3<Float>, a: SIMD3<Float>, b: SIMD3<Float>, rho: Float) -> SIMD3<Float> {
@@ -121,6 +148,7 @@ struct PositionField {
                     var p = sum / Float(nbrs.count)
                     p -= normal[i] * simd_dot(normal[i], p - x[i])               // back onto the tangent plane
                     let a = orientation[i], b = simd_cross(normal[i], a)
+                    if let g = pin[i] { p += b * simd_dot(g - p, b) }            // the row across the guide stays on it
                     anchor[i] = Level.snap(x[i], origin: p, a: a, b: b, rho: rho)   // same lattice, kept near the node
                 }
             }
@@ -143,6 +171,7 @@ struct PositionField {
             }
             var parent = [Int](repeating: -1, count: n)
             var cx: [SIMD3<Float>] = [], cn: [SIMD3<Float>] = [], co: [SIMD3<Float>] = [], cw: [Float] = []
+            var cpin: [SIMD3<Float>?] = []
             for i in 0..<n where parent[i] < 0 {
                 let id = cx.count
                 parent[i] = id
@@ -163,11 +192,19 @@ struct PositionField {
                 } else {
                     o -= pnorm * simd_dot(pnorm, o)
                 }
+                var chosenPin: SIMD3<Float>?
+                if let g = group.first(where: { pin[$0] != nil }) {
+                    chosenPin = pin[g]
+                    let po = orientation[g] - pnorm * simd_dot(pnorm, orientation[g])
+                    if simd_length(po) > 1e-6 { o = simd_normalize(po) }
+                }
                 cx.append(px); cn.append(pnorm); co.append(simd_length(o) > 1e-9 ? simd_normalize(o) : o); cw.append(w)
+                cpin.append(chosenPin)
             }
             var adj = [Set<Int>](repeating: [], count: cx.count)
             for i in 0..<n { for j in adjacency[i] where parent[i] != parent[j] { adj[parent[i]].insert(parent[j]) } }
-            let coarse = Level(x: cx, normal: cn, orientation: co, weight: cw, adjacency: adj.map { Array($0).sorted() })
+            var coarse = Level(x: cx, normal: cn, orientation: co, weight: cw, adjacency: adj.map { Array($0).sorted() })
+            coarse.pin = cpin
             return (coarse, parent)
         }
     }
@@ -177,10 +214,11 @@ struct PositionField {
     /// Coarse-to-fine: nodes are merged in pairs until few remain, the lattice is agreed on there
     /// first, and each finer level starts from its parent's lattice. A single fine level alone
     /// converges far too slowly to one lattice across the whole surface.
-    private mutating func optimize(iterations: Int) {
+    private mutating func optimize(iterations: Int, pins: [SIMD3<Float>?]) {
         let n = topology.positions.count
         var levels = [Level(x: topology.positions, normal: topology.vertexNormal, orientation: orientation,
                             weight: topology.vertexAreaWeights(), adjacency: adjacency)]
+        levels[0].pin = pins
         var parents: [[Int]] = []
         while levels.last!.x.count > 150 {
             let (coarse, parent) = levels.last!.coarsened()

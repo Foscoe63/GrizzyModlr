@@ -324,6 +324,12 @@ final class ProjectStore {
         save()
     }
 
+    func setFlowGuides(_ guides: [FlowGuide], for id: Project.ID) {
+        guard let i = projects.firstIndex(where: { $0.id == id }), projects[i].flowGuides != guides else { return }
+        projects[i].flowGuides = guides
+        save()
+    }
+
     func rename(_ id: Project.ID, to name: String) {
         guard let i = projects.firstIndex(where: { $0.id == id }) else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)

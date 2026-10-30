@@ -293,11 +293,18 @@ struct Project: Identifiable, Codable, Hashable {
     var extraViewsRaw: [String: String]?
     /// Objects placed in this project's composed scene (see SceneComposition).
     var sceneItemsRaw: [SceneItem]?
+    /// Flow guide curves drawn on this project's shape (mesh coordinates), used by flow remesh.
+    var flowGuidesRaw: [FlowGuide]?
 
     init(id: UUID = UUID(), name: String, createdAt: Date = Date()) {
         self.id = id
         self.name = name
         self.createdAt = createdAt
+    }
+
+    var flowGuides: [FlowGuide] {
+        get { flowGuidesRaw ?? [] }
+        set { flowGuidesRaw = newValue.isEmpty ? nil : newValue }
     }
 
     var sceneItems: [SceneItem] {

@@ -273,15 +273,16 @@ final class FlowRemeshTests: XCTestCase {
             var o = FlowRemesh.Options(); o.targetQuads = 2000; o.guides = guides
             if let w = ProcessInfo.processInfo.environment["GUIDE_W"].flatMap(Float.init) { o.guideStrength = w }
             guard let r = FlowRemesh.remesh(positions: mesh.positions, faces: mesh.faces, options: o) else { return nil }
-            let rho = (r.positions.isEmpty ? 0 : width / 40)
+            let rho = FlowRemesh.metrics(of: r, surface: mesh.positions, faces: mesh.faces).meanEdge * 1.5
             var edges = 0, aligned = 0
             for q in r.quads {
                 let c = [q.x, q.y, q.z, q.w]
                 for k in 0..<4 {
                     let a = r.positions[Int(c[k])], b = r.positions[Int(c[(k + 1) % 4])]
                     let e = b - a
-                    guard simd_length(e) > 1e-9, let g = tangent(near: (a + b) / 2), g.dist < rho else { continue }
-                    edges += 1
+                    guard simd_length(e) > 1e-9, let g = tangent(near: (a + b) / 2), g.dist < rho,
+                          let ga = tangent(near: a), let gb = tangent(near: b), ga.dist < rho * 0.27, gb.dist < rho * 0.27 else { continue }
+                    edges += 1                                        // an edge lying on the guide
                     if abs(simd_dot(simd_normalize(e), g.dir)) > cos(25 * Float.pi / 180) { aligned += 1 }
                 }
             }
@@ -289,5 +290,60 @@ final class FlowRemeshTests: XCTestCase {
         }
         let a = edgeAlignment([]), b = edgeAlignment([guide])
         print("GUIDE remesh: edges near guide without \(a?.edges ?? -1) aligned(25°) \(a?.aligned ?? -1); with \(b?.edges ?? -1) aligned \(b?.aligned ?? -1); quads \(a?.quads ?? -1) → \(b?.quads ?? -1)")
+        // Edges lying on the guide are a row running along it.
+        XCTAssertGreaterThanOrEqual(b?.edges ?? 0, 10)
+        XCTAssertGreaterThanOrEqual((b?.aligned ?? 0) * 10, (b?.edges ?? 1) * 9)
+    }
+}
+
+extension FlowRemeshTests {
+    /// A sphere with a cap cut away is open on the +x side; the remesh must not grow a bar out to the grid edge.
+    func testRemeshOfAnOpenMeshDoesNotGrowABar() throws {
+        let (p, f) = icosphere(4)
+        let open = f.filter { t in (p[Int(t.x)].x + p[Int(t.y)].x + p[Int(t.z)].x) / 3 < 0.85 }
+        XCTAssertLessThan(open.count, f.count)
+        let r = try XCTUnwrap(MeshBoolean.remesh(positions: p, faces: open, resolution: 48))
+        let maxX = r.positions.map(\.x).max() ?? 0
+        XCTAssertLessThan(maxX, 1.1)
+    }
+
+    /// Opt-in: FLOW_MESH=<.mesh>. Looks for spikes (very long edges) in the aligned quad remesh.
+    func testQuadRemeshHasNoSpikesOnRealScan() throws {
+        guard let path = ProcessInfo.processInfo.environment["FLOW_MESH"] else { throw XCTSkip("set FLOW_MESH") }
+        let mesh = try XCTUnwrap(MeshDecimator.parse(Data(contentsOf: URL(fileURLWithPath: path))))
+        let r = try XCTUnwrap(MeshBoolean.quadRemesh(positions: mesh.positions, faces: mesh.faces, resolution: 128))
+        var lens: [Float] = []
+        var worst: (Float, SIMD3<Float>, SIMD3<Float>) = (0, .zero, .zero)
+        for f in r.faces { for (a, b) in [(f.x, f.y), (f.y, f.z), (f.z, f.x)] {
+            let d = simd_distance(r.positions[Int(a)], r.positions[Int(b)])
+            lens.append(d)
+            if d > worst.0 { worst = (d, r.positions[Int(a)], r.positions[Int(b)]) }
+        } }
+        lens.sort()
+        print("SPIKE edges \(lens.count) median \(lens[lens.count / 2]) p99 \(lens[lens.count * 99 / 100]) max \(lens.last!) at \(worst.1) → \(worst.2)")
+        // Thin triangles: ratio of the longest edge to the altitude.
+        var slivers = 0
+        for f in r.faces {
+            let a = r.positions[Int(f.x)], b = r.positions[Int(f.y)], c = r.positions[Int(f.z)]
+            let longest = max(simd_distance(a, b), max(simd_distance(b, c), simd_distance(c, a)))
+            let area = simd_length(simd_cross(b - a, c - a)) / 2
+            if area < longest * longest * 0.01 { slivers += 1 }
+        }
+        print("SPIKE slivers (area < 1% of longest²): \(slivers) of \(r.faces.count)")
+        var lo = SIMD3<Float>(repeating: .infinity), hi = SIMD3<Float>(repeating: -.infinity)
+        for p in r.positions { lo = simd_min(lo, p); hi = simd_max(hi, p) }
+        var plo = SIMD3<Float>(repeating: .infinity), phi = SIMD3<Float>(repeating: -.infinity)
+        for p in mesh.positions { plo = simd_min(plo, p); phi = simd_max(phi, p) }
+        print("SPIKE bounds input \(plo) \(phi) output \(lo) \(hi)")
+    }
+}
+
+extension FlowRemeshTests {
+    func testGuidesSurviveProjectEncoding() throws {
+        var p = Project(name: "t")
+        p.flowGuides = [FlowGuide(points: [[0, 0, 0], [1, 2, 3]])]
+        let back = try JSONDecoder().decode(Project.self, from: JSONEncoder().encode(p))
+        XCTAssertEqual(back.flowGuides, p.flowGuides)
+        XCTAssertTrue(Project(name: "x").flowGuides.isEmpty)
     }
 }
