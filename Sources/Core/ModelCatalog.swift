@@ -4,6 +4,8 @@ import Foundation
 enum ModelID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case shapeSmall = "shape-small"
     case shapeLarge = "shape-large"
+    /// Hunyuan3D 2.0 full (non-distilled): same network as Large, run with real CFG over many steps.
+    case shapeFull = "shape-full"
     case paintSmall = "paint-small"
     case paintLarge = "paint-large"
     /// Hunyuan3D-2mv: optional, used automatically when a project has 2+ reference views.
@@ -24,7 +26,7 @@ enum ModelID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
 
     var kind: EngineKind {
         switch self {
-        case .shapeSmall, .shapeLarge, .shapeMultiView, .triposr: return .shape
+        case .shapeSmall, .shapeLarge, .shapeFull, .shapeMultiView, .triposr: return .shape
         case .paintSmall, .paintLarge, .viewSynthesis, .textToImage, .depthEstimation: return .paint
         }
     }
@@ -94,6 +96,20 @@ enum ModelCatalog {
                             sha256: "4712421fe32d57c678be3be2b608acdb8871985f0b81646a883d136abc63feb7"),
                 CatalogFile(path: "model.fp16.safetensors", bytes: 4_930_777_530,
                             sha256: "5ee5a81e4df08a1c65b79910bf5b145a90376e526794f4607a4d5d068d62f269"),
+            ]),
+        CatalogModel(
+            id: .shapeFull,
+            displayName: "Shape · Full",
+            detail: "Hunyuan3D 2.0 · 1.1B full model (not distilled) · best shape detail, slowest",
+            repo: "tencent/Hunyuan3D-2",
+            revision: "9cd649ba6913f7a852e3286bad86bfa9a2d83dcf",
+            files: [
+                CatalogFile(path: "config.yaml", bytes: 1_604,
+                            sha256: "70bbfcdd18b9686ee56fe011c3a059b222eae1f5450f904577c50f0e107a8a53",
+                            remotePath: "hunyuan3d-dit-v2-0/config.yaml"),
+                CatalogFile(path: "model.fp16.safetensors", bytes: 4_928_151_562,
+                            sha256: "360bc281fc956d4acac0c3d36d5ec0ebf8cdddbf4b8892e894d12419388d479b",
+                            remotePath: "hunyuan3d-dit-v2-0/model.fp16.safetensors"),
             ]),
         CatalogModel(
             id: .paintSmall,

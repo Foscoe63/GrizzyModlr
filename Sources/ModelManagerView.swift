@@ -7,6 +7,8 @@ struct SettingsView: View {
         TabView {
             ModelManagerView()
                 .tabItem { Label("Models", systemImage: "square.stack.3d.up") }
+            ModelCatalogBrowserView()
+                .tabItem { Label("Catalog", systemImage: "square.grid.2x2") }
             ToolSettingsView()
                 .tabItem { Label("Tools", systemImage: "wand.and.stars") }
             ViewerSettingsView()
@@ -66,7 +68,7 @@ struct ModelManagerView: View {
 }
 
 /// One §4.3 machine, rendered. Every state maps to exactly one control set.
-private struct ModelRow: View {
+struct ModelRow: View {
     @Environment(AppRuntime.self) private var runtime
     let model: ModelID
     @Binding var importTarget: ModelID?
