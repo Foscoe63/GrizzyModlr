@@ -51,4 +51,39 @@ final class FlowRemeshTests: XCTestCase {
         XCTAssertGreaterThan(r.quads.count, 100)
         for v in r.positions { XCTAssertEqual(simd_length(v), 1, accuracy: 0.03) }
     }
+
+    private func torus(n: Int = 64, m: Int = 32) -> ([SIMD3<Float>], [SIMD3<UInt32>]) {
+        var p: [SIMD3<Float>] = []
+        for i in 0..<n { for j in 0..<m {
+            let u = 2 * Float.pi * Float(i) / Float(n), v = 2 * Float.pi * Float(j) / Float(m)
+            p.append([(1 + 0.35 * cos(v)) * cos(u), (1 + 0.35 * cos(v)) * sin(u), 0.35 * sin(v)])
+        } }
+        var f: [SIMD3<UInt32>] = []
+        for i in 0..<n { for j in 0..<m {
+            let a = UInt32(i * m + j), b = UInt32(((i + 1) % n) * m + j)
+            let c = UInt32(((i + 1) % n) * m + (j + 1) % m), d = UInt32(i * m + (j + 1) % m)
+            f.append([a, b, c]); f.append([a, c, d])
+        } }
+        return (p, f)
+    }
+
+    func testTorusFlowRemeshCloses() throws {
+        let (p, f) = torus()
+        var o = FlowRemesh.Options(); o.targetQuads = 400
+        let r = try XCTUnwrap(FlowRemesh.remesh(positions: p, faces: f, options: o))
+        XCTAssertGreaterThan(r.quads.count, 200)
+        XCTAssertGreaterThan(r.regularVertexShare, 0.5)
+    }
+
+    /// Opt-in: FLOW_MESH=<.mesh> runs the flow remesh on a real scan and prints the outcome.
+    func testRealScanReport() throws {
+        guard let path = ProcessInfo.processInfo.environment["FLOW_MESH"] else { throw XCTSkip("set FLOW_MESH") }
+        let mesh = try XCTUnwrap(MeshDecimator.parse(Data(contentsOf: URL(fileURLWithPath: path))))
+        FlowRemesh.trace = { print("DBG \($0)") }
+        defer { FlowRemesh.trace = nil }
+        var o = FlowRemesh.Options(); o.targetQuads = 2000
+        let t = Date()
+        let r = FlowRemesh.remesh(positions: mesh.positions, faces: mesh.faces, options: o)
+        print("DBG real result", r.map { "quads \($0.quads.count) faces \($0.faces.count) fill \($0.filledTriangles) regular \($0.regularVertexShare)" } ?? "nil", "in", Date().timeIntervalSince(t))
+    }
 }
