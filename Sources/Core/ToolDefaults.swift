@@ -31,6 +31,8 @@ enum ToolDefaults {
         static let regionTolerance = "tools.regionTolerance"
         static let regionFeather = "tools.regionFeather"
         static let islandPadding = "tools.islandPadding"
+        static let printSizeMM = "tools.printSizeMM"
+        static let slicer = "tools.slicer"
         static let tsrThreshold = "tools.tsrThreshold"
         static let tsrForegroundRatio = "tools.tsrForegroundRatio"
         static let tsrKeepLargest = "tools.tsrKeepLargest"
@@ -66,6 +68,8 @@ enum ToolDefaults {
     static let fallbackRegionTolerance = 0.12
     static let fallbackRegionFeather = 0.10
     static let fallbackIslandPadding = 2.0
+    static let fallbackPrintSizeMM = 100.0
+    static let fallbackSlicer = "auto"
     static let fallbackTSRThreshold = 25.0
     static let fallbackTSRForegroundRatio = 0.85
     static let fallbackReliefDepth = 0.25
@@ -107,6 +111,8 @@ enum ToolDefaults {
     static func regionTolerance(_ d: UserDefaults = .standard) -> Double { double(Key.regionTolerance, fallbackRegionTolerance, d) }
     static func regionFeather(_ d: UserDefaults = .standard) -> Double { double(Key.regionFeather, fallbackRegionFeather, d) }
     static func islandPadding(_ d: UserDefaults = .standard) -> Int { Int(double(Key.islandPadding, fallbackIslandPadding, d)) }
+    static func printSizeMM(_ d: UserDefaults = .standard) -> Double { double(Key.printSizeMM, fallbackPrintSizeMM, d) }
+    static func slicer(_ d: UserDefaults = .standard) -> String { d.string(forKey: Key.slicer) ?? fallbackSlicer }
     static func exportQuads(_ d: UserDefaults = .standard) -> Bool { d.bool(forKey: Key.exportQuads) }
     static func tsrThreshold(_ d: UserDefaults = .standard) -> Float { Float(double(Key.tsrThreshold, fallbackTSRThreshold, d)) }
     static func tsrForegroundRatio(_ d: UserDefaults = .standard) -> Float { Float(double(Key.tsrForegroundRatio, fallbackTSRForegroundRatio, d)) }

@@ -310,6 +310,8 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.regionTolerance) private var regionTolerance = ToolDefaults.fallbackRegionTolerance
     @AppStorage(ToolDefaults.Key.regionFeather) private var regionFeather = ToolDefaults.fallbackRegionFeather
     @AppStorage(ToolDefaults.Key.islandPadding) private var islandPadding = ToolDefaults.fallbackIslandPadding
+    @AppStorage(ToolDefaults.Key.printSizeMM) private var printSizeMM = ToolDefaults.fallbackPrintSizeMM
+    @AppStorage(ToolDefaults.Key.slicer) private var slicerChoice = ToolDefaults.fallbackSlicer
     @AppStorage(ToolDefaults.Key.tsrThreshold) private var tsrThreshold = ToolDefaults.fallbackTSRThreshold
     @AppStorage(ToolDefaults.Key.tsrForegroundRatio) private var tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
     @AppStorage(ToolDefaults.Key.tsrKeepLargest) private var tsrKeepLargest = true
@@ -407,6 +409,15 @@ struct ToolSettingsView: View {
                 Text("Edges sharper than this are treated as creases the flow lines follow. Used by the flow field view and flow remesh. Guide strength is how hard drawn guide curves pull the flow compared with creases.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("3D printing") {
+                LabeledContent("3MF longest side") { slider($printSizeMM, 0...400, step: 5, label: printSizeMM == 0 ? "as is" : "\(Int(printSizeMM)) mm") }
+                Picker("Slicer", selection: $slicerChoice) {
+                    Text("First installed").tag("auto")
+                    ForEach(Slicer.allCases) { Text($0.title + ($0.appURL == nil ? " (not installed)" : "")).tag($0.rawValue) }
+                }
+                Text("3MF export scales the model so its longest side is this many millimetres and sets it on the bed (0 keeps the model's own units). \"Open in slicer\" in the export menu sends that 3MF to the chosen slicer.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Material regions") {
                 LabeledContent("Color tolerance") { slider($regionTolerance, 0.02...0.5, step: 0.01, label: String(format: "%.0f%%", regionTolerance * 100)) }
                 LabeledContent("Edge softness") { slider($regionFeather, 0.01...0.4, step: 0.01, label: String(format: "%.0f%%", regionFeather * 100)) }
@@ -460,6 +471,7 @@ struct ToolSettingsView: View {
         flowGuideStrength = ToolDefaults.fallbackFlowGuideStrength
         regionTolerance = ToolDefaults.fallbackRegionTolerance; regionFeather = ToolDefaults.fallbackRegionFeather
         islandPadding = ToolDefaults.fallbackIslandPadding
+        printSizeMM = ToolDefaults.fallbackPrintSizeMM; slicerChoice = ToolDefaults.fallbackSlicer
         tsrThreshold = ToolDefaults.fallbackTSRThreshold; tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
         tsrKeepLargest = true
         reliefDepth = ToolDefaults.fallbackReliefDepth; reliefResolution = ToolDefaults.fallbackReliefResolution

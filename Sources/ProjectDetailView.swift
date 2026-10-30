@@ -681,6 +681,14 @@ struct ProjectDetailView: View {
                                 Label(fmt.menuTitle, systemImage: fmt.icon)
                             }
                         }
+                        Divider()
+                        Button {
+                            sendToSlicer(meshURL: meshURL)
+                        } label: {
+                            Label(Slicer.preferred().map { "Open in \($0.title)" } ?? "Open in slicer (none installed)",
+                                  systemImage: "printer.dotmatrix")
+                        }
+                        .disabled(Slicer.preferred() == nil)
                     } label: {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 12, weight: .semibold))
@@ -693,11 +701,36 @@ struct ProjectDetailView: View {
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
                     .fixedSize()
-                    .help("Export model (GLB, USDZ, OBJ, STL, PLY)")
+                    .help("Export model (GLB, USDZ, OBJ, STL, PLY, 3MF, FBX)")
                 }
                 Spacer()
             }
             .padding(10)
+        }
+    }
+
+    /// Exports a 3MF to a temporary folder and opens it in the preferred slicer.
+    private func sendToSlicer(meshURL: URL) {
+        guard let slicer = Slicer.preferred() else { return }
+        let safe = project.name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("GrizzyModlr-slicer", isDirectory: true)
+        let dest = dir.appendingPathComponent("\(safe.isEmpty ? "model" : safe).3mf")
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                try MeshExporter.export(meshURL: meshURL, texture: nil, format: .threemf, to: dest)
+                DispatchQueue.main.async {
+                    slicer.open(dest) { error in
+                        guard let error else { return }
+                        let alert = NSAlert(); alert.messageText = "Slicer"; alert.informativeText = error; alert.runModal()
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    let alert = NSAlert(); alert.messageText = "Export failed"; alert.informativeText = "\(error)"; alert.runModal()
+                }
+            }
         }
     }
 

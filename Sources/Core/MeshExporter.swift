@@ -2,10 +2,10 @@ import Foundation
 
 /// A user-pickable export format for the generated mesh.
 enum MeshExportFormat: String, CaseIterable, Identifiable {
-    case glb, usdz, obj, stl, ply
+    case glb, usdz, obj, stl, ply, threemf, fbx
 
     var id: String { rawValue }
-    var ext: String { rawValue }
+    var ext: String { self == .threemf ? "3mf" : rawValue }
 
     /// Menu label. Hints stay true whether or not the source has a texture
     /// (the shape mesh has none; the painted mesh does).
@@ -16,6 +16,8 @@ enum MeshExportFormat: String, CaseIterable, Identifiable {
         case .obj: return "OBJ · mesh + material"
         case .stl: return "STL · geometry (3D printing)"
         case .ply: return "PLY · geometry data"
+        case .threemf: return "3MF · 3D printing (scaled, on the bed)"
+        case .fbx: return "FBX · static mesh + texture (no animation)"
         }
     }
 
@@ -26,6 +28,8 @@ enum MeshExportFormat: String, CaseIterable, Identifiable {
         case .obj: return "cube"
         case .stl: return "printer"
         case .ply: return "point.3.connected.trianglepath.dotted"
+        case .threemf: return "printer.fill"
+        case .fbx: return "film"
         }
     }
 }
@@ -74,6 +78,16 @@ enum MeshExporter {
         case .ply: try encodePLY(mesh).write(to: dest)
         case .glb: try encodeGLB(mesh).write(to: dest)
         case .usdz: try USDZExporter.write(mesh, to: dest)
+        case .threemf: try ThreeMFExporter.encode(mesh, maxDimensionMM: ToolDefaults.printSizeMM()).write(to: dest)
+        case .fbx:
+            let dir = dest.deletingLastPathComponent()
+            let base = dest.deletingPathExtension().lastPathComponent
+            var textureName: String? = nil
+            if let png = mesh.texturePNG, mesh.uvs != nil {
+                textureName = base + ".png"
+                try png.write(to: dir.appendingPathComponent(textureName!))
+            }
+            try FBXExporter.encode(mesh, name: base, textureName: textureName).write(to: dest)
         case .obj:
             let dir = dest.deletingLastPathComponent()
             let base = dest.deletingPathExtension().lastPathComponent
