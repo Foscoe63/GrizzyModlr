@@ -258,8 +258,32 @@ enum FlowRemesh {
         func cap(_ loop: [UInt32]) {
             // The loop runs along existing faces' edges, so the cap winds the other way.
             let r = Array(loop.reversed())
-            if r.count <= maxHoleEdges {
-                for k in 1..<(r.count - 1) { fill.append([r[0], r[k], r[k + 1]]) }
+            if r.count <= 80 {
+                // Minimum total diagonal length: short, even triangles and no high-valence centre.
+                let n = r.count
+                func dist(_ i: Int, _ j: Int) -> Float { simd_distance(cpos[Int(r[i])], cpos[Int(r[j])]) }
+                var cost = [[Float]](repeating: [Float](repeating: 0, count: n), count: n)
+                var split = [[Int]](repeating: [Int](repeating: 0, count: n), count: n)
+                if n >= 3 {
+                    for len in 2..<n {
+                        for i in 0..<(n - len) {
+                            let j = i + len
+                            var best = Float.infinity, bk = i + 1
+                            for k in (i + 1)..<j {
+                                let c = cost[i][k] + cost[k][j] + (k - i > 1 ? dist(i, k) : 0) + (j - k > 1 ? dist(k, j) : 0)
+                                if c < best { best = c; bk = k }
+                            }
+                            cost[i][j] = best; split[i][j] = bk
+                        }
+                    }
+                }
+                var stack = [(0, n - 1)]
+                while let (i, j) = stack.popLast() {
+                    guard j - i >= 2 else { continue }
+                    let k = split[i][j]
+                    fill.append([r[i], r[k], r[j]])
+                    stack.append((i, k)); stack.append((k, j))
+                }
             } else {
                 // Larger gaps: a fan around a new vertex at the loop's centre (projected onto the surface later).
                 let centre = UInt32(cpos.count)
