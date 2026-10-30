@@ -253,8 +253,9 @@ enum FlowRemesh {
         var fill: [SIMD3<UInt32>] = []
         var next: [UInt32: [UInt32]] = [:]
         let basePositions = cpos.count
+        var ring: [SIMD4<UInt32>] = []
         for round in 0..<6 {
-        fill = []; next = [:]
+        fill = []; next = [:]; ring = []
         cpos.removeSubrange(basePositions...)
         directed = Set(quads.flatMap { q in [dkey(q.x, q.y), dkey(q.y, q.z), dkey(q.z, q.w), dkey(q.w, q.x)] })
         for q in quads {
@@ -262,9 +263,32 @@ enum FlowRemesh {
                 next[a, default: []].append(b)
             }
         }
-        func cap(_ loop: [UInt32]) {
-            // The loop runs along existing faces' edges, so the cap winds the other way.
-            let r = Array(loop.reversed())
+        // The loop runs along existing faces' edges, so the cap winds the other way.
+        func cap(_ loop: [UInt32]) { fillLoop(Array(loop.reversed()), depth: 0) }
+        func fillLoop(_ r: [UInt32], depth: Int) {
+            if r.count == 4 { ring.append([r[0], r[1], r[2], r[3]]); return }
+            if r.count > 12, depth < 30 {
+                // Large gap: peel off a ring of quads one lattice step wide and fill what is left.
+                let centre = r.reduce(SIMD3<Float>.zero) { $0 + cpos[Int($1)] } / Float(r.count)
+                let radius = r.reduce(Float(0)) { $0 + simd_distance(cpos[Int($1)], centre) } / Float(r.count)
+                let perimeter = zip(r, r.dropFirst() + [r[0]]).reduce(Float(0)) { $0 + simd_distance(cpos[Int($1.0)], cpos[Int($1.1)]) }
+                let shrink = 1 - rho / max(radius, 1e-9)
+                // Keep peeling only while the inner ring's vertices stay a sensible distance apart;
+                // otherwise the rings pinch into a pole of squeezed quads.
+                if radius > 1.5 * rho, perimeter * shrink / Float(r.count) >= 0.6 * rho {
+                    var inner: [UInt32] = []
+                    for v in r {
+                        inner.append(UInt32(cpos.count))
+                        cpos.append(centre + (cpos[Int(v)] - centre) * shrink)
+                    }
+                    for i in 0..<r.count {
+                        let j = (i + 1) % r.count
+                        ring.append([r[i], r[j], inner[j], inner[i]])
+                    }
+                    fillLoop(inner, depth: depth + 1)
+                    return
+                }
+            }
             if r.count <= 80 {
                 // Minimum total diagonal length: short, even triangles and no high-valence centre.
                 let n = r.count
@@ -325,6 +349,7 @@ enum FlowRemesh {
         var count: [UInt64: Int] = [:]
         for q in quads { for (x, y) in [(q.x, q.y), (q.y, q.z), (q.z, q.w), (q.w, q.x)] { count[dkey(x, y), default: 0] += 1 } }
         for t in fill { for (x, y) in [(t.x, t.y), (t.y, t.z), (t.z, t.x)] { count[dkey(x, y), default: 0] += 1 } }
+        for q in ring { for (x, y) in [(q.x, q.y), (q.y, q.z), (q.z, q.w), (q.w, q.x)] { count[dkey(x, y), default: 0] += 1 } }
         let bad = Set(count.filter { $0.value > 1 }.keys)
         trace?("round \(round): duplicate edges \(bad.count)")
         if bad.isEmpty || round == 5 { break }
@@ -345,7 +370,7 @@ enum FlowRemesh {
             if remap[Int(v)] < 0 { remap[Int(v)] = Int32(outPos.count); outPos.append(cpos[Int(v)]) }
             return UInt32(remap[Int(v)])
         }
-        let outQuads = quads.map { SIMD4(map($0.x), map($0.y), map($0.z), map($0.w)) }
+        let outQuads = (quads + ring).map { SIMD4(map($0.x), map($0.y), map($0.z), map($0.w)) }
         let outFill = fill.map { SIMD3(map($0.x), map($0.y), map($0.z)) }
         guard !outQuads.isEmpty else { return nil }
         return Extracted(positions: outPos, quads: outQuads, fillTriangles: outFill)
