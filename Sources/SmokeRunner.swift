@@ -73,6 +73,11 @@ enum SmokeRunner {
             return
         }
 
+        if let mesh = env["MODELR_SMOKE_FLOWREMESH"], !mesh.isEmpty {
+            try runFlowRemeshMode(meshPath: mesh)
+            return
+        }
+
         if env["MODELR_SMOKE_INPAINT"] == "1" {
             try await runInpaintMode()
             return
@@ -275,6 +280,44 @@ enum SmokeRunner {
             }
         }
         log("flow: wrote images")
+    }
+
+    // MARK: - Flow remesh mode
+
+    /// Runs the same edit the "Flow remesh" button runs (`MeshOps.applyToFile`) on a real mesh,
+    /// then renders the result with the app's own mesh loader. Writes flow-remesh-*.png and the mesh.
+    private static func runFlowRemeshMode(meshPath: String) throws {
+        let src = URL(fileURLWithPath: meshPath)
+        let dst = outDir.appendingPathComponent("flow-remesh.mesh")
+        let edit = MeshEdit.flowRemesh(targetQuads: Int(ToolDefaults.flowTargetQuads()),
+                                       featureAngle: Float(ToolDefaults.flowFeatureAngle()), fallbackResolution: 128)
+        let t = Date()
+        guard let r = MeshOps.applyToFile(edit, from: src, to: dst) else { throw fail("the edit failed") }
+        log(String(format: "flow remesh: changed=%@ note=\"%@\" in %.1fs", r.changed ? "yes" : "no", r.note, Date().timeIntervalSince(t)))
+        guard r.changed, let loaded = MeshViewer.load(.mesh(dst)) else { throw fail("no result to render") }
+        for (name, angle) in [("front", Float(0)), ("side", Float.pi / 2), ("three-quarter", Float.pi / 4)] {
+            let scene = SCNScene()
+            scene.rootNode.addChildNode(loaded.node.clone())
+            let light = SCNNode(); light.light = SCNLight(); light.light?.type = .omni
+            light.position = SCNVector3(2, 3, 4); scene.rootNode.addChildNode(light)
+            let amb = SCNNode(); amb.light = SCNLight(); amb.light?.type = .ambient; amb.light?.intensity = 500
+            scene.rootNode.addChildNode(amb)
+            let cam = SCNNode(); cam.camera = SCNCamera()
+            let rad = Float(loaded.radius) * 2.6
+            cam.position = SCNVector3(Float(loaded.center.x) + sin(angle) * rad, Float(loaded.center.y) + rad * 0.2,
+                                      Float(loaded.center.z) + cos(angle) * rad)
+            cam.look(at: loaded.center)
+            scene.rootNode.addChildNode(cam)
+            let renderer = SCNRenderer(device: MTLCreateSystemDefaultDevice(), options: nil)
+            renderer.scene = scene; renderer.pointOfView = cam
+            renderer.debugOptions = [.showWireframe]
+            let image = renderer.snapshot(atTime: 0, with: CGSize(width: 900, height: 900), antialiasingMode: .multisampling4X)
+            if let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+               let png = rep.representation(using: .png, properties: [:]) {
+                try png.write(to: outDir.appendingPathComponent("flow-remesh-\(name).png"))
+            }
+        }
+        log("flow remesh: wrote images")
     }
 
     // MARK: - AI Fill mode (real Stable Diffusion weights)
