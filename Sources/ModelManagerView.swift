@@ -309,6 +309,7 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.flowGuideStrength) private var flowGuideStrength = ToolDefaults.fallbackFlowGuideStrength
     @AppStorage(ToolDefaults.Key.regionTolerance) private var regionTolerance = ToolDefaults.fallbackRegionTolerance
     @AppStorage(ToolDefaults.Key.regionFeather) private var regionFeather = ToolDefaults.fallbackRegionFeather
+    @AppStorage(ToolDefaults.Key.islandPadding) private var islandPadding = ToolDefaults.fallbackIslandPadding
     @AppStorage(ToolDefaults.Key.tsrThreshold) private var tsrThreshold = ToolDefaults.fallbackTSRThreshold
     @AppStorage(ToolDefaults.Key.tsrForegroundRatio) private var tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
     @AppStorage(ToolDefaults.Key.tsrKeepLargest) private var tsrKeepLargest = true
@@ -409,7 +410,8 @@ struct ToolSettingsView: View {
             Section("Material regions") {
                 LabeledContent("Color tolerance") { slider($regionTolerance, 0.02...0.5, step: 0.01, label: String(format: "%.0f%%", regionTolerance * 100)) }
                 LabeledContent("Edge softness") { slider($regionFeather, 0.01...0.4, step: 0.01, label: String(format: "%.0f%%", regionFeather * 100)) }
-                Text("Starting values when limiting a material edit to one color of the texture.")
+                LabeledContent("UV island padding") { slider($islandPadding, 0...8, step: 1, label: "\(Int(islandPadding)) px") }
+                Text("Starting values when limiting a material edit to one color of the texture. Island padding grows a selected UV island past its edge so seams don't show a halo.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("AI Fill") {
@@ -457,6 +459,7 @@ struct ToolSettingsView: View {
         flowTargetQuads = ToolDefaults.fallbackFlowTargetQuads
         flowGuideStrength = ToolDefaults.fallbackFlowGuideStrength
         regionTolerance = ToolDefaults.fallbackRegionTolerance; regionFeather = ToolDefaults.fallbackRegionFeather
+        islandPadding = ToolDefaults.fallbackIslandPadding
         tsrThreshold = ToolDefaults.fallbackTSRThreshold; tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
         tsrKeepLargest = true
         reliefDepth = ToolDefaults.fallbackReliefDepth; reliefResolution = ToolDefaults.fallbackReliefResolution

@@ -124,6 +124,33 @@ enum UVLayout {
         return clash
     }
 
+    // MARK: texture masks
+
+    /// Per-texel 1 over the UV footprint of `faceIDs` (grown by `padding` texels so edits
+    /// reach past the seam into the texture's gutter), 0 elsewhere. Row-major, `w * h`.
+    static func footprintMask(faces: [SIMD3<UInt32>], uvs: [SIMD2<Float>], faceIDs: [Int],
+                              w: Int, h: Int, padding: Int = 0) -> [Float] {
+        var mask = [Float](repeating: 0, count: w * h)
+        for fi in faceIDs {
+            let f = faces[fi]
+            raster(uvs[Int(f.x)], uvs[Int(f.y)], uvs[Int(f.z)], w: w, h: h, tolerance: 0.03) { x, y, _ in
+                mask[y * w + x] = 1
+            }
+        }
+        guard padding > 0 else { return mask }
+        for _ in 0..<padding {
+            var grown = mask
+            for y in 0..<h { for x in 0..<w where mask[y * w + x] == 0 {
+                if (x > 0 && mask[y * w + x - 1] > 0) || (x < w - 1 && mask[y * w + x + 1] > 0)
+                    || (y > 0 && mask[(y - 1) * w + x] > 0) || (y < h - 1 && mask[(y + 1) * w + x] > 0) {
+                    grown[y * w + x] = 1
+                }
+            } }
+            mask = grown
+        }
+        return mask
+    }
+
     // MARK: texture remap
 
     /// Rewrites `source` so every face in `faceIDs` shows the same image at its new UVs.

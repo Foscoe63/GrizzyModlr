@@ -91,4 +91,23 @@ final class MaterialRegionTests: XCTestCase {
         XCTAssertEqual(edited[0], 200)                       // pixel (0,0) edited
         XCTAssertEqual(edited[(3 * 4 + 3) * 4], 100)         // pixel (3,3) untouched
     }
+
+    func testIslandFootprintMaskCoversOnlyThatIsland() {
+        // Two separate triangles in UV space: left half and right half of the unit square.
+        let uvs: [SIMD2<Float>] = [[0, 0], [0.4, 0], [0, 0.4], [0.6, 0.6], [1, 0.6], [0.6, 1]]
+        let faces: [SIMD3<UInt32>] = [[0, 1, 2], [3, 4, 5]]
+        let islands = UVLayout.islands(faces: faces, uvs: uvs)
+        XCTAssertEqual(islands.count, 2)
+        let m = UVLayout.footprintMask(faces: faces, uvs: uvs, faceIDs: islands[0].faces, w: 20, h: 20)
+        XCTAssertEqual(m[1 * 20 + 1], 1)          // inside island 0
+        XCTAssertEqual(m[18 * 20 + 18], 0)        // inside island 1, not selected
+        let grown = UVLayout.footprintMask(faces: faces, uvs: uvs, faceIDs: islands[0].faces, w: 20, h: 20, padding: 2)
+        XCTAssertGreaterThan(grown.reduce(0, +), m.reduce(0, +))
+        XCTAssertEqual(grown[18 * 20 + 18], 0)
+    }
+
+    func testIslandSelectionIsPartOfSummary() {
+        var a = MaterialAdjustments(); a.brightness = 0.1; a.islands = [0, 2]
+        XCTAssertTrue(a.summary.contains("2 UV islands"))
+    }
 }

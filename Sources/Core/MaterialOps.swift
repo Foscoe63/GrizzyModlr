@@ -17,6 +17,8 @@ struct MaterialAdjustments: Equatable {
     var metalness: Float = 1
     /// When set, the edit applies only to texels near this color (soft edge); nil = everywhere.
     var region: ColorRegion?
+    /// UV island ids (`UVLayout.islands` order) the edit is limited to; empty = all islands.
+    var islands: Set<Int> = []
 
     var altersAlbedo: Bool { brightness != 0 || saturation != 1 || hue != 0 }
     var altersMR: Bool { roughness != 1 || metalness != 1 }
@@ -30,6 +32,7 @@ struct MaterialAdjustments: Equatable {
         if roughness != 1 { parts.append(String(format: "roughness ×%.2f", roughness)) }
         if metalness != 1 { parts.append(String(format: "metalness ×%.2f", metalness)) }
         if region != nil { parts.append("selected color only") }
+        if !islands.isEmpty { parts.append("\(islands.count) UV island\(islands.count == 1 ? "" : "s")") }
         return parts.joined(separator: ", ")
     }
 }

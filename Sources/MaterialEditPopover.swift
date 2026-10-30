@@ -15,6 +15,7 @@ struct MaterialEditPopover: View {
     @State private var feather = ToolDefaults.regionFeather()
     @State private var coverage: Float?
     @State private var sample: (rgba: [UInt8], size: Int)?
+    @State private var islandShare: [Float] = []   // texture share of each UV island, by id
 
     private var isPBR: Bool { store.project(projectID)?.currentGeneration?.isPBR ?? false }
 
@@ -45,7 +46,7 @@ struct MaterialEditPopover: View {
             }
 
             HStack {
-                Button("Reset") { let r = adj.region; adj = MaterialAdjustments(); adj.region = r; message = nil }
+                Button("Reset") { let r = adj.region, s = adj.islands; adj = MaterialAdjustments(); adj.region = r; adj.islands = s; message = nil }
                     .disabled(adj.isIdentity)
                 Spacer()
                 Button {
@@ -54,7 +55,7 @@ struct MaterialEditPopover: View {
                     Task {
                         let result = await store.applyMaterialEdit(adj, for: projectID)
                         busy = false
-                        if result == nil { let r = adj.region; adj = MaterialAdjustments(); adj.region = r }
+                        if result == nil { let r = adj.region, s = adj.islands; adj = MaterialAdjustments(); adj.region = r; adj.islands = s }
                         message = result ?? "Saved as a new version."
                     }
                 } label: { Label("Apply", systemImage: "checkmark") }
@@ -63,7 +64,7 @@ struct MaterialEditPopover: View {
             }
             if busy { ProgressView().controlSize(.small) }
             if let message { Text(message).font(.caption).foregroundStyle(.secondary) }
-            Text(isPBR ? (adj.region == nil ? "Adjusts the whole texture." : "Adjusts only the selected color.") : "Color textures have no roughness or metalness map.")
+            Text(isPBR ? ((adj.region == nil && adj.islands.isEmpty) ? "Adjusts the whole texture." : "Adjusts only the selection.") : "Color textures have no roughness or metalness map.")
                 .font(.caption2).foregroundStyle(.tertiary)
         }
         .padding(14)
@@ -90,7 +91,28 @@ struct MaterialEditPopover: View {
                         .font(.caption2).foregroundStyle(.secondary)
                 }
             }
+            if islandShare.count > 1 { islandSection }
         }
+    }
+
+    @ViewBuilder private var islandSection: some View {
+        DisclosureGroup("UV islands" + (adj.islands.isEmpty ? "" : " (\(adj.islands.count))")) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(islandShare.indices, id: \.self) { i in
+                        Toggle(isOn: Binding(get: { adj.islands.contains(i) },
+                                             set: { on in if on { adj.islands.insert(i) } else { adj.islands.remove(i) } })) {
+                            Text(String(format: "Island %d · %.0f%% of texture", i + 1, islandShare[i] * 100))
+                                .font(.caption)
+                        }
+                        .toggleStyle(.checkbox)
+                    }
+                }
+            }
+            .frame(maxHeight: 110)
+            if !adj.islands.isEmpty { Button("Clear islands") { adj.islands = [] }.controlSize(.small) }
+        }
+        .font(.callout.weight(.medium))
     }
 
     private func swatchButton(_ index: Int?) -> some View {
@@ -126,6 +148,18 @@ struct MaterialEditPopover: View {
             return (MaterialRegion.dominantColors(d.rgba), small)
         }.value
         if let loaded { palette = loaded.0; sample = (loaded.1, 0) }
+        let meshURL = store.folderURL(for: projectID).appendingPathComponent(gen.meshFileName)
+        islandShare = await Task.detached(priority: .userInitiated) { () -> [Float] in
+            guard let mesh = (try? Data(contentsOf: meshURL)).flatMap(TexturedMesh.parse) else { return [] }
+            let islands = UVLayout.islands(faces: mesh.faces, uvs: mesh.uvs)
+            var areas = islands.map { isl in isl.faces.reduce(Float(0)) { acc, fi in
+                let f = mesh.faces[fi], a = mesh.uvs[Int(f.x)], b = mesh.uvs[Int(f.y)], c = mesh.uvs[Int(f.z)]
+                return acc + abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2
+            } }
+            let total = areas.reduce(0, +)
+            if total > 0 { areas = areas.map { $0 / total } }
+            return areas
+        }.value
     }
 
     private func syncRegion() {

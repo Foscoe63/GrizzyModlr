@@ -960,6 +960,8 @@ final class ProjectStore {
         let dir = folder(for: id)
         let newID = UUID()
         let albedoSrc = dir.appendingPathComponent(albedoName)
+        let meshSrc = dir.appendingPathComponent(base.meshFileName)
+        let padding = ToolDefaults.islandPadding()
         let albedoDst = dir.appendingPathComponent("painted_\(newID.uuidString)_albedo.png")
         let mrSrc = base.paintedMRFileName.map { dir.appendingPathComponent($0) }
         let mrDst = mrSrc == nil ? nil : dir.appendingPathComponent("painted_\(newID.uuidString)_mr.png")
@@ -967,9 +969,18 @@ final class ProjectStore {
             // Region weights come from the albedo's colors and apply to every map (same UV layout).
             var mask: [Float]? = nil
             var maskSize = (w: 0, h: 0)
-            if let region = adj.region {
+            if adj.region != nil || !adj.islands.isEmpty {
                 guard let a = MaterialOps.decode(albedoSrc) else { return false }
-                mask = MaterialRegion.mask(a.rgba, region: region)
+                var m = adj.region.map { MaterialRegion.mask(a.rgba, region: $0) }
+                if !adj.islands.isEmpty {
+                    guard let mesh = (try? Data(contentsOf: meshSrc)).flatMap(TexturedMesh.parse) else { return false }
+                    let faceIDs = UVLayout.islands(faces: mesh.faces, uvs: mesh.uvs)
+                        .filter { adj.islands.contains($0.id) }.flatMap(\.faces)
+                    let foot = UVLayout.footprintMask(faces: mesh.faces, uvs: mesh.uvs, faceIDs: faceIDs,
+                                                      w: a.width, h: a.height, padding: padding)
+                    m = m.map { zip($0, foot).map { $0 * $1 } } ?? foot
+                }
+                mask = m
                 maskSize = (a.width, a.height)
             }
             if adj.altersAlbedo || mrSrc == nil || !adj.altersMR {
