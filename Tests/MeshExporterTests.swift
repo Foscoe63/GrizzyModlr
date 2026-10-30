@@ -282,7 +282,7 @@ final class MeshExporterTests: XCTestCase {
         let painted = try writeMeshFile(named: "painted.tmesh", withUVs: true)
         let tex = try writePNG(named: "painted_texture.png", Self.tinyPNG)
 
-        for format in MeshExportFormat.allCases {
+        for format in MeshExportFormat.allCases where format != .glbRigged {   // needs a humanoid; see RigTests
             // Untextured shape export.
             let d1 = dir.appendingPathComponent("shape-e2e.\(format.ext)")
             try MeshExporter.export(meshURL: shape, texture: nil, format: format, to: d1)

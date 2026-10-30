@@ -98,10 +98,10 @@ Comprehensive plan to evolve from image→3D to a full local 3D creation studio.
 ### Phase 3: Pro Features (P3)
 
 #### 3.1 Rigging & Animation
-- **Auto-rigging** — AI-based skeleton generation for characters
-- **Pose library** — preset poses and animation clips
+- 🟡 **Auto-rigging** — geometric 22-joint humanoid fit (not AI; upright front-facing figures only)
+- 🟡 **Pose library** — 6 poses, 3 clips (Walk, Wave, Arms up)
 - **Weight painting** — manual skin weight adjustment
-- **Animation export** — FBX with animations
+- 🟡 **Animation export** — GLB with skin + clip (FBX animation not done)
 
 #### 3.2 Extended Export
 - ✅ **USDZ** — Apple AR Quick Look

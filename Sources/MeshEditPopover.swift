@@ -21,6 +21,7 @@ struct MeshEditPopover: View {
     @State private var remeshRes: Double = ToolDefaults.remeshResolution()
     @State private var lodText: String = UserDefaults.standard.string(forKey: ToolDefaults.Key.lodLevels) ?? ToolDefaults.fallbackLODLevels
     @State private var busy = false
+    @State private var poseName = PoseLibrary.all[1].name
     @State private var booleanOp: BooleanOp = .subtract
     @State private var operandChoice = "sphere"          // a BooleanPrimitive raw value or a version UUID
     @State private var operandSize: Double = 0.5
@@ -58,6 +59,8 @@ struct MeshEditPopover: View {
 
             Divider()
             topologySection
+            Divider()
+            poseSection
 
             Divider()
             combineSection
@@ -166,6 +169,20 @@ extension MeshEditPopover {
 }
 
 extension MeshEditPopover {
+    @ViewBuilder
+    fileprivate var poseSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Pose").font(.callout.weight(.medium))
+            Picker("Pose", selection: $poseName) {
+                ForEach(PoseLibrary.all, id: \.name) { Text($0.name).tag($0.name) }
+            }
+            .labelsHidden()
+            action("Bake pose into mesh", "figure.stand") { .pose(name: poseName) }
+            Text("Fits a humanoid skeleton to an upright figure and bends the mesh. Saved as a new version. For a rigged, animated file use Export ▸ GLB · rigged.")
+                .font(.caption2).foregroundStyle(.tertiary)
+        }
+    }
+
     @ViewBuilder
     fileprivate var topologySection: some View {
         VStack(alignment: .leading, spacing: 8) {

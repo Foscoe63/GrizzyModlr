@@ -13,6 +13,8 @@ enum MeshEdit: Equatable {
     case remesh(resolution: Int)
     /// Remesh in the model's own axis frame with sharp edges kept, giving quad rows along its flats.
     case quadRemesh(resolution: Int)
+    /// Fits a humanoid skeleton, skins the mesh, and bakes the named pose (see `PoseLibrary`).
+    case pose(name: String)
     case flowRemesh(targetQuads: Int, featureAngle: Float, fallbackResolution: Int, guides: [FlowGuide] = [], guideStrength: Float = 40)
 
     var label: String {
@@ -23,6 +25,7 @@ enum MeshEdit: Equatable {
         case .symmetrize(let axis, let positive): return "mirrored \(positive ? "+" : "−")\(axis.rawValue.uppercased()) half"
         case .remesh(let n): return "remeshed at \(n)"
         case .quadRemesh(let n): return "quad remeshed at \(n)"
+        case .pose(let name): return "posed: \(name)"
         case .flowRemesh(let q, _, _, _, _): return "flow remeshed to ~\(q) quads"
         }
     }
@@ -280,6 +283,17 @@ enum MeshOps {
             let q = apply(.quadRemesh(resolution: fallback), positions: positions, faces: faces)
             return Result(positions: q.positions, faces: q.faces,
                           note: "flow remesh didn't close; used the aligned remesh instead (\(q.note))", changed: q.changed)
+        case .pose(let name):
+            guard let pose = PoseLibrary.named(name), let skeleton = Skeleton.fit(to: positions) else {
+                return Result(positions: positions, faces: faces, note: "couldn't fit a skeleton to this mesh", changed: false)
+            }
+            let weights = SkinWeights.compute(positions: positions, skeleton: skeleton)
+            let height = (positions.map(\.y).max() ?? 0) - (positions.map(\.y).min() ?? 0)
+            let posed = pose.apply(to: positions, skeleton: skeleton, weights: weights, height: height)
+            guard posed.allSatisfy({ $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }) else {
+                return Result(positions: positions, faces: faces, note: "posing produced invalid points", changed: false)
+            }
+            return Result(positions: posed, faces: faces, note: "\(name) pose on a fitted \(skeleton.joints.count)-joint skeleton", changed: name != "Rest")
         case .fillHoles(let maxEdges):
             let r = fillHoles(positions: positions, faces: faces, maxEdges: maxEdges)
             return Result(positions: r.positions, faces: r.faces,

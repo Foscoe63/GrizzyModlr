@@ -313,6 +313,8 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.printSizeMM) private var printSizeMM = ToolDefaults.fallbackPrintSizeMM
     @AppStorage(ToolDefaults.Key.slicer) private var slicerChoice = ToolDefaults.fallbackSlicer
     @AppStorage(ToolDefaults.Key.batchPaint) private var batchPaint = false
+    @AppStorage(ToolDefaults.Key.rigClip) private var rigClip = ToolDefaults.fallbackRigClip
+    @AppStorage(ToolDefaults.Key.rigClipSpeed) private var rigClipSpeed = ToolDefaults.fallbackRigClipSpeed
     @AppStorage(ToolDefaults.Key.tsrThreshold) private var tsrThreshold = ToolDefaults.fallbackTSRThreshold
     @AppStorage(ToolDefaults.Key.tsrForegroundRatio) private var tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
     @AppStorage(ToolDefaults.Key.tsrKeepLargest) private var tsrKeepLargest = true
@@ -419,6 +421,14 @@ struct ToolSettingsView: View {
                 Text("3MF export scales the model so its longest side is this many millimetres and sets it on the bed (0 keeps the model's own units). \"Open in slicer\" in the export menu sends that 3MF to the chosen slicer.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Rigging") {
+                Picker("Animation clip", selection: $rigClip) {
+                    ForEach(PoseLibrary.clips, id: \.name) { Text($0.name).tag($0.name) }
+                }
+                LabeledContent("Clip speed") { slider($rigClipSpeed, 0.25...3, step: 0.25, label: String(format: "×%.2f", rigClipSpeed)) }
+                Text("The rigged GLB export fits a standard humanoid skeleton (works on upright, front-facing figures with arms out or hanging) and embeds this clip. Poses can also be baked into the mesh from the mesh-edit popover.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Batch and plugins") {
                 Toggle("Batch also paints textures", isOn: $batchPaint)
                 LabeledContent("Plugins") {
@@ -485,6 +495,7 @@ struct ToolSettingsView: View {
         islandPadding = ToolDefaults.fallbackIslandPadding
         printSizeMM = ToolDefaults.fallbackPrintSizeMM; slicerChoice = ToolDefaults.fallbackSlicer
         batchPaint = false
+        rigClip = ToolDefaults.fallbackRigClip; rigClipSpeed = ToolDefaults.fallbackRigClipSpeed
         tsrThreshold = ToolDefaults.fallbackTSRThreshold; tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
         tsrKeepLargest = true
         reliefDepth = ToolDefaults.fallbackReliefDepth; reliefResolution = ToolDefaults.fallbackReliefResolution

@@ -2,10 +2,10 @@ import Foundation
 
 /// A user-pickable export format for the generated mesh.
 enum MeshExportFormat: String, CaseIterable, Identifiable {
-    case glb, usdz, obj, stl, ply, threemf, fbx
+    case glb, usdz, obj, stl, ply, threemf, fbx, glbRigged
 
     var id: String { rawValue }
-    var ext: String { self == .threemf ? "3mf" : rawValue }
+    var ext: String { self == .threemf ? "3mf" : (self == .glbRigged ? "glb" : rawValue) }
 
     /// Menu label. Hints stay true whether or not the source has a texture
     /// (the shape mesh has none; the painted mesh does).
@@ -18,6 +18,7 @@ enum MeshExportFormat: String, CaseIterable, Identifiable {
         case .ply: return "PLY · geometry data"
         case .threemf: return "3MF · 3D printing (scaled, on the bed)"
         case .fbx: return "FBX · static mesh + texture (no animation)"
+        case .glbRigged: return "GLB · rigged humanoid + animation clip"
         }
     }
 
@@ -30,6 +31,7 @@ enum MeshExportFormat: String, CaseIterable, Identifiable {
         case .ply: return "point.3.connected.trianglepath.dotted"
         case .threemf: return "printer.fill"
         case .fbx: return "film"
+        case .glbRigged: return "figure.walk"
         }
     }
 }
@@ -78,6 +80,9 @@ enum MeshExporter {
         case .ply: try encodePLY(mesh).write(to: dest)
         case .glb: try encodeGLB(mesh).write(to: dest)
         case .usdz: try USDZExporter.write(mesh, to: dest)
+        case .glbRigged:
+            let clip = PoseLibrary.clip(named: ToolDefaults.rigClip()) ?? PoseLibrary.clips[0]
+            try RigGLB.encode(mesh, clip: clip, speed: Float(ToolDefaults.rigClipSpeed())).write(to: dest)
         case .threemf: try ThreeMFExporter.encode(mesh, maxDimensionMM: ToolDefaults.printSizeMM()).write(to: dest)
         case .fbx:
             let dir = dest.deletingLastPathComponent()

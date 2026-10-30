@@ -96,3 +96,10 @@ The Python reference scripts and harness packages were in the session scratchpad
 - Batch: `BatchQueue` (Sources/BatchQueue.swift), Generate ▸ Batch Generate from Images…; one project per image, shape then optional paint, sequential. Driven by polling `runtime.state`; **not run against real models here** — only compiles/unit-covered indirectly.
 - Plugins: `ToolPlugin` (Sources/Core/ToolPlugin.swift), Model ▸ Tools; manifest format in docs/PLUGINS.md. Tested with cp/false.
 - **Not done:** rigging, pose library, weight painting, animation export, project templates.
+
+## Rigging (minimal)
+
+- `Skeleton.fit` (Sources/Core/Rig.swift): 22-joint humanoid placed from the bbox + width at shoulder height (T-pose if reach > 0.45h, else A/hanging). `SkinWeights.compute`: inverse-distance to bone segments, top 4. `RigPose` is direction-based (bone points along a world vector), `PoseLibrary` has poses; `MeshEdit.pose` bakes one into a new version (popover → Pose).
+- `RigGLB` (RigGLB.swift) post-processes `encodeGLB`: skin, JOINTS_0/WEIGHTS_0, IBMs, rotation animation. Export format "GLB · rigged humanoid + animation clip"; clip + speed in Settings → Rigging.
+- **Verified only on a synthetic box-figure** (tests/RigTests) — not on a real character scan, not loaded in Blender/Unity. Arms touching the torso share weights; non-humanoids fit badly.
+- **Not done:** weight painting, hand-adjusting joints, retargeting, FBX animation, project templates.

@@ -34,6 +34,8 @@ enum ToolDefaults {
         static let printSizeMM = "tools.printSizeMM"
         static let slicer = "tools.slicer"
         static let batchPaint = "tools.batchPaint"
+        static let rigClip = "tools.rigClip"
+        static let rigClipSpeed = "tools.rigClipSpeed"
         static let tsrThreshold = "tools.tsrThreshold"
         static let tsrForegroundRatio = "tools.tsrForegroundRatio"
         static let tsrKeepLargest = "tools.tsrKeepLargest"
@@ -71,6 +73,8 @@ enum ToolDefaults {
     static let fallbackIslandPadding = 2.0
     static let fallbackPrintSizeMM = 100.0
     static let fallbackSlicer = "auto"
+    static let fallbackRigClip = "Walk"
+    static let fallbackRigClipSpeed = 1.0
     static let fallbackTSRThreshold = 25.0
     static let fallbackTSRForegroundRatio = 0.85
     static let fallbackReliefDepth = 0.25
@@ -115,6 +119,8 @@ enum ToolDefaults {
     static func printSizeMM(_ d: UserDefaults = .standard) -> Double { double(Key.printSizeMM, fallbackPrintSizeMM, d) }
     static func slicer(_ d: UserDefaults = .standard) -> String { d.string(forKey: Key.slicer) ?? fallbackSlicer }
     static func batchPaint(_ d: UserDefaults = .standard) -> Bool { d.bool(forKey: Key.batchPaint) }
+    static func rigClip(_ d: UserDefaults = .standard) -> String { d.string(forKey: Key.rigClip) ?? fallbackRigClip }
+    static func rigClipSpeed(_ d: UserDefaults = .standard) -> Double { double(Key.rigClipSpeed, fallbackRigClipSpeed, d) }
     static func exportQuads(_ d: UserDefaults = .standard) -> Bool { d.bool(forKey: Key.exportQuads) }
     static func tsrThreshold(_ d: UserDefaults = .standard) -> Float { Float(double(Key.tsrThreshold, fallbackTSRThreshold, d)) }
     static func tsrForegroundRatio(_ d: UserDefaults = .standard) -> Float { Float(double(Key.tsrForegroundRatio, fallbackTSRForegroundRatio, d)) }
