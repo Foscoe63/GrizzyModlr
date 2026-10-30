@@ -60,6 +60,14 @@ enum FlowRemesh {
         let closest = ClosestPoint(positions: positions, faces: faces)
         mesh.positions = mesh.positions.map { closest.nearest(to: $0) }
         let closed = isClosedManifold(mesh.positions.count, mesh.quads, mesh.fillTriangles)
+        if trace != nil {
+            var c: [UInt64: Int] = [:]
+            for q in mesh.quads { for (a, b) in [(q.x, q.y), (q.y, q.z), (q.z, q.w), (q.w, q.x)] { c[UInt64(a) << 32 | UInt64(b), default: 0] += 1 } }
+            for t in mesh.fillTriangles { for (a, b) in [(t.x, t.y), (t.y, t.z), (t.z, t.x)] { c[UInt64(a) << 32 | UInt64(b), default: 0] += 1 } }
+            let dup = c.values.filter { $0 > 1 }.count
+            let open = c.keys.filter { c[UInt64($0 & 0xFFFF_FFFF) << 32 | $0 >> 32] == nil }.count
+            trace?("duplicate directed edges \(dup), open \(open), tris \(mesh.fillTriangles.count)")
+        }
         trace?("closed manifold: \(closed)")
         guard closed else { return nil }
 
@@ -242,27 +250,44 @@ enum FlowRemesh {
                 next[a, default: []].append(b)
             }
         }
+        func cap(_ loop: [UInt32]) {
+            // The loop runs along existing faces' edges, so the cap winds the other way.
+            let r = Array(loop.reversed())
+            if r.count <= maxHoleEdges {
+                for k in 1..<(r.count - 1) { fill.append([r[0], r[k], r[k + 1]]) }
+            } else {
+                // Larger gaps: a fan around a new vertex at the loop's centre (projected onto the surface later).
+                let centre = UInt32(cpos.count)
+                cpos.append(r.reduce(SIMD3<Float>.zero) { $0 + cpos[Int($1)] } / Float(r.count))
+                for k in 0..<r.count { fill.append([centre, r[k], r[(k + 1) % r.count]]) }
+            }
+        }
+        // Follow boundary edges; whenever the walk returns to a vertex already on the path, that
+        // stretch is a closed loop (touching loops pinch at shared vertices) and is capped on its own.
         var used = Set<UInt64>()
         for start in next.keys.sorted() {
             for first in next[start] ?? [] where !used.contains(dkey(start, first)) {
-                var loop = [start], cur = first
                 used.insert(dkey(start, first))
-                var closed = false
-                while loop.count <= maxHoleEdges + 1 {
-                    loop.append(cur)
-                    guard let nxt = next[cur]?.first(where: { !used.contains(dkey(cur, $0)) || $0 == start }) else { break }
-                    if nxt == start { used.insert(dkey(cur, nxt)); closed = true; break }
-                    used.insert(dkey(cur, nxt)); cur = nxt
+                var path = [start, first]
+                var steps = 0
+                while path.count > 1, steps < 100_000 {
+                    steps += 1
+                    let cur = path[path.count - 1]
+                    if let idx = path.dropLast().firstIndex(of: cur) {
+                        let loop = Array(path[idx..<(path.count - 1)])
+                        if loop.count >= 3 { cap(loop) }
+                        path.removeLast(path.count - 1 - idx)
+                        if path.count == 1 { break }
+                        continue
+                    }
+                    guard let nxt = next[cur]?.first(where: { !used.contains(dkey(cur, $0)) }) else { break }
+                    used.insert(dkey(cur, nxt)); path.append(nxt)
                 }
-                guard closed, loop.count >= 3, loop.count <= maxHoleEdges else { continue }
-                // The loop runs along existing faces' edges, so the cap winds the other way.
-                let r = Array(loop.reversed())
-                for k in 1..<(r.count - 1) { fill.append([r[0], r[k], r[k + 1]]) }
             }
         }
         trace?("boundary half-edges \(next.values.reduce(0) { $0 + $1.count }), fill tris \(fill.count)")
         // Drop nodes no face uses.
-        var remap = [Int32](repeating: -1, count: m)
+        var remap = [Int32](repeating: -1, count: cpos.count)
         var outPos: [SIMD3<Float>] = []
         func map(_ v: UInt32) -> UInt32 {
             if remap[Int(v)] < 0 { remap[Int(v)] = Int32(outPos.count); outPos.append(cpos[Int(v)]) }

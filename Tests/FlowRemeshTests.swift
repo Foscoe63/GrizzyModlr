@@ -35,11 +35,20 @@ final class FlowRemeshTests: XCTestCase {
         for i in 0..<p.count { XCTAssertLessThan(simd_distance(pf.position[i], p[i]), 0.35 * 0.75 + 1e-4) }   // within a lattice cell of the vertex
     }
 
-    /// The flow remesh does not yet close reliably; the edit must still return a usable mesh.
+    /// Whether or not the flow closes, the edit must return a usable mesh.
     func testFlowRemeshEditAlwaysYieldsAMesh() {
         let (p, f) = icosphere(3)
         let r = MeshOps.apply(.flowRemesh(targetQuads: 200, featureAngle: 35, fallbackResolution: 48), positions: p, faces: f)
         XCTAssertTrue(r.changed)
         XCTAssertFalse(r.faces.isEmpty)
+    }
+
+    func testSphereFlowRemeshClosesAndStaysOnSurface() throws {
+        let (p, f) = icosphere(4)
+        let r = try XCTUnwrap(FlowRemesh.remesh(positions: p, faces: f, options: { var o = FlowRemesh.Options(); o.targetQuads = 200; return o }()))
+        XCTAssertGreaterThan(Float(r.quads.count * 2) / Float(r.faces.count), 0.5)    // mostly quads
+        XCTAssertGreaterThan(r.regularVertexShare, 0.3)
+        XCTAssertGreaterThan(r.quads.count, 100)
+        for v in r.positions { XCTAssertEqual(simd_length(v), 1, accuracy: 0.03) }
     }
 }
