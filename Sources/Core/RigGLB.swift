@@ -60,11 +60,13 @@ enum RigGLB {
         var meshes = (json["meshes"] as? [[String: Any]]) ?? []
 
         func align() { while bin.count % 4 != 0 { bin.append(0) } }
-        func append<T>(_ values: [T]) -> (view: Int, count: Int) {
+        func append<T>(_ values: [T], vertexData: Bool = false) -> (view: Int, count: Int) {
             align()
             let offset = bin.count
             values.withUnsafeBytes { bin.append(contentsOf: $0) }
-            bufferViews.append(["buffer": 0, "byteOffset": offset, "byteLength": values.count * MemoryLayout<T>.stride])
+            var view: [String: Any] = ["buffer": 0, "byteOffset": offset, "byteLength": values.count * MemoryLayout<T>.stride]
+        if vertexData { view["target"] = 34962 }
+        bufferViews.append(view)
             return (bufferViews.count - 1, values.count)
         }
         func accessor(view: Int, component: Int, count: Int, type: String, extra: [String: Any] = [:]) -> Int {
@@ -80,7 +82,7 @@ enum RigGLB {
         for v in 0..<weights.joints.count {
             for k in 0..<4 { jointsRaw.append(weights.joints[v][k]); weightsRaw.append(weights.weights[v][k]) }
         }
-        let jView = append(jointsRaw), wView = append(weightsRaw)
+        let jView = append(jointsRaw, vertexData: true), wView = append(weightsRaw, vertexData: true)
         let jAcc = accessor(view: jView.view, component: 5123, count: weights.joints.count, type: "VEC4")
         let wAcc = accessor(view: wView.view, component: 5126, count: weights.joints.count, type: "VEC4")
 

@@ -303,4 +303,23 @@ final class RigTests: XCTestCase {
             XCTAssertTrue(joints.contains((c["target"] as! [String: Any])["node"] as! Int))
         }
     }
+
+    /// Opt-in: RIG_GLB_OUT=<dir> writes a rigged GLB of the test figure for an external validator.
+    func testWriteRiggedGLBForValidation() throws {
+        guard let out = ProcessInfo.processInfo.environment["RIG_GLB_OUT"] else { throw XCTSkip("set RIG_GLB_OUT") }
+        let f = figure()
+        var d = Data()
+        func le<T>(_ v: T) { var x = v; withUnsafeBytes(of: &x) { d.append(contentsOf: $0) } }
+        le(Int32(f.positions.count)); le(Int32(f.faces.count))
+        f.positions.forEach { le($0.x); le($0.y); le($0.z) }
+        f.positions.forEach { _ in le(Float(0)); le(Float(1)); le(Float(0)) }
+        f.faces.forEach { le($0.x); le($0.y); le($0.z) }
+        let src = FileManager.default.temporaryDirectory.appendingPathComponent("w-\(UUID().uuidString).mesh")
+        try d.write(to: src); defer { try? FileManager.default.removeItem(at: src) }
+        for (name, clip) in PoseLibrary.clips.map({ ($0.name, $0) }) {
+            let mesh = try MeshExporter.read(meshURL: src, textureURL: nil)
+            try RigGLB.encode(mesh, clip: clip, naming: .mixamo)
+                .write(to: URL(fileURLWithPath: out).appendingPathComponent("rigged-\(name.replacingOccurrences(of: " ", with: "-")).glb"))
+        }
+    }
 }

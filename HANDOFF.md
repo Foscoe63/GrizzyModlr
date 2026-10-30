@@ -117,3 +117,5 @@ The bust (head + torso, h/width ≈ 1.5) is not a figure: the fitted skeleton pu
 - Still unvalidated on a real full-body character.
 
 GLB checks: `testRiggedGLBInvariants` verifies spec-level structure (accessor ranges, joint indices, weights sum, acyclic nodes, animation counts). ModelIO on this macOS can't import GLB, so there is no outside importer check; run Khronos `gltf-validator` or Blender on a rigged export when available.
+
+Validated the rigged GLBs (Walk, Wave, Arms up on the test figure, Mixamo names) with Khronos `gltf-validator` (npm): 0 errors, 0 warnings, 0 infos after setting `target` on the JOINTS_0/WEIGHTS_0 buffer views. That checks file structure only — not how Blender/Unity animate it, and still not on a real character. Re-run: `TEST_RUNNER_RIG_GLB_OUT=<dir>` with `RigTests/testWriteRiggedGLBForValidation`, then validate the files.
