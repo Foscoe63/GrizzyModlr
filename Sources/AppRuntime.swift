@@ -295,7 +295,7 @@ final class AppRuntime {
             && relief.values.allSatisfy { if case .running = $0 { return false } else { return true } }
     }
 
-    /// Copies the library into `picked` (a "Modelr Models" folder is created inside it), then
+    /// Copies the library into `picked` (a "GrizzyModlr Models" folder is created inside it), then
     /// switches to it and removes the old copy once every file is verified.
     func moveModels(toFolder picked: URL) {
         guard canChangeModelsLocation else { return }
@@ -307,7 +307,7 @@ final class AppRuntime {
     /// Uses a folder that already holds models (e.g. copied earlier, or from another Mac).
     func useExistingModels(at picked: URL) {
         guard canChangeModelsLocation else { return }
-        let nested = picked.appendingPathComponent("Modelr Models", isDirectory: true)
+        let nested = picked.appendingPathComponent("GrizzyModlr Models", isDirectory: true)
         let root: URL
         if !ModelRelocation.items(in: picked).isEmpty { root = picked }
         else if !ModelRelocation.items(in: nested).isEmpty { root = nested }

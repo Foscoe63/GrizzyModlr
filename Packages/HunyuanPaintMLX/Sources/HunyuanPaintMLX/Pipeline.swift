@@ -25,7 +25,7 @@ public enum Weights {
 }
 
 /// Result geometry + baked texture from a paint run. Format-agnostic — the caller
-/// serializes to whatever mesh format it uses (Modelr writes a `.tmesh` + PNG).
+/// serializes to whatever mesh format it uses (GrizzyModlr writes a `.tmesh` + PNG).
 public struct PaintResult {
     public let vertices: [Float]   // flat xyz, unwrapped geometry
     public let faces: [UInt32]     // flat triangle indices

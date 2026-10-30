@@ -241,7 +241,7 @@ final class ShapeEngine {
     }
 }
 
-/// Serializes a Hy3DMLX `Mesh` (positions + faces) into Modelr's `.mesh` binary
+/// Serializes a Hy3DMLX `Mesh` (positions + faces) into GrizzyModlr's `.mesh` binary
 /// (`[i32 nV][i32 nF][f32 verts][f32 normals][i32 faces]`), computing area-weighted
 /// vertex normals the marching-cubes output doesn't carry.
 enum ShapeMeshWriter {

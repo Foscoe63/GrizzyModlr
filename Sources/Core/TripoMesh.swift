@@ -1,10 +1,10 @@
 import Foundation
 import simd
 
-/// Turns a TripoSR density grid into a mesh in Modelr's frame.
+/// Turns a TripoSR density grid into a mesh in GrizzyModlr's frame.
 ///
 /// TripoSR works in a z-up frame whose camera looks down −x at the object's front (image-right is
-/// +y). Modelr is y-up with the front toward +z and image-right toward +x, so a TripoSR point
+/// +y). GrizzyModlr is y-up with the front toward +z and image-right toward +x, so a TripoSR point
 /// (x, y, z) becomes (y, z, x) — a cyclic permutation, which keeps handedness (and winding).
 enum TripoMesh {
     /// `density` is `n³` values over (−radius, radius)³ flattened with x slowest (i, j, k) — the
@@ -21,7 +21,7 @@ enum TripoMesh {
         let grid = MeshBoolean.Grid(origin: SIMD3(repeating: -radius), cell: cell, nx: n, ny: n, nz: n)
         let m = MeshBoolean.surfaceNets(field, grid: grid)
         guard !m.faces.isEmpty else { return nil }
-        var positions = m.positions.map { SIMD3<Float>($0.y, $0.z, $0.x) }          // TripoSR → Modelr axes
+        var positions = m.positions.map { SIMD3<Float>($0.y, $0.z, $0.x) }          // TripoSR → GrizzyModlr axes
         var faces = m.faces
         if keepLargestPiece { (positions, faces) = largestComponent(positions, faces) }
         return (positions, faces)

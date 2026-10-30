@@ -1,4 +1,4 @@
-name: Modelr
+name: GrizzyModlr
 options:
   bundleIdPrefix: com.zimeng
   deploymentTarget:
@@ -34,7 +34,7 @@ settings:
       CODE_SIGN_IDENTITY: "Apple Development"
 
 targets:
-  Modelr:
+  GrizzyModlr:
     type: application
     platform: macOS
     deploymentTarget: "14.0"
@@ -48,10 +48,10 @@ targets:
         product: HunyuanPaintMLX
     settings:
       base:
-        PRODUCT_NAME: Modelr
+        PRODUCT_NAME: GrizzyModlr
         PRODUCT_BUNDLE_IDENTIFIER: com.zimeng.Modelr
         GENERATE_INFOPLIST_FILE: "YES"
-        INFOPLIST_KEY_CFBundleDisplayName: Modelr
+        INFOPLIST_KEY_CFBundleDisplayName: GrizzyModlr
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.graphics-design"
         INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 Zimeng"
         INFOPLIST_KEY_NSHighResolutionCapable: "YES"
@@ -60,7 +60,7 @@ targets:
 
   # Pure-logic tests: the deterministic core compiles directly into the bundle
   # (no TEST_HOST), so `xcodebuild test` runs headless — no app launch, no GPU.
-  ModelrTests:
+  GrizzyModlrTests:
     type: bundle.unit-test
     platform: macOS
     deploymentTarget: "14.0"
@@ -84,16 +84,16 @@ targets:
         GENERATE_INFOPLIST_FILE: "YES"
 
 schemes:
-  Modelr:
+  GrizzyModlr:
     build:
       targets:
-        Modelr: all
+        GrizzyModlr: all
     run:
       config: Debug
     test:
       config: Debug
       gatherCoverageData: false
       targets:
-        - ModelrTests
+        - GrizzyModlrTests
     archive:
       config: Release

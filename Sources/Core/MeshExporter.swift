@@ -28,7 +28,7 @@ enum MeshExportFormat: String, CaseIterable, Identifiable {
     }
 }
 
-/// Converts Modelr's compact binary meshes into standard interchange formats.
+/// Converts GrizzyModlr's compact binary meshes into standard interchange formats.
 ///
 /// Pure-Foundation (no AppKit / SceneKit) so it can be unit-tested standalone and
 /// run off the main thread. Source layouts:
@@ -176,7 +176,7 @@ enum MeshExporter {
     static func encodeOBJ(_ mesh: MeshData, mtlName: String?, textureName: String?,
                           quads: Bool = false) -> (obj: Data, mtl: Data?) {
         let hasUV = mesh.uvs != nil && textureName != nil
-        var s = "# Modelr export\n"
+        var s = "# GrizzyModlr export\n"
         s.reserveCapacity(mesh.vertCount * 64 + mesh.faceCount * 40)
         if hasUV, let mtlName { s += "mtllib \(mtlName)\nusemtl material0\n" }
 
@@ -217,7 +217,7 @@ enum MeshExporter {
                 ? "# albedo (base color) only — OBJ/MTL has no metallic-roughness slot; use GLB for full PBR\n"
                 : ""
             let m = """
-            # Modelr material
+            # GrizzyModlr material
             \(pbrNote)newmtl material0
             Ka 1.000 1.000 1.000
             Kd 1.000 1.000 1.000
@@ -238,7 +238,7 @@ enum MeshExporter {
         var header = """
         ply
         format binary_little_endian 1.0
-        comment Modelr export
+        comment GrizzyModlr export
         element vertex \(mesh.vertCount)
         property float x
         property float y
@@ -347,7 +347,7 @@ enum MeshExporter {
 
         var primitive: [String: Any] = ["attributes": attributes, "indices": idxAccessor]
         var json: [String: Any] = [
-            "asset": ["version": "2.0", "generator": "Modelr"],
+            "asset": ["version": "2.0", "generator": "GrizzyModlr"],
             "scene": 0,
             "scenes": [["nodes": [0]]],
             "nodes": [["mesh": 0]],

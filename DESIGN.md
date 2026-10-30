@@ -1,8 +1,8 @@
-# modelr design
+# grizzymodlr design
 
 ## product
 
-modelr is a native macos app for turning one image into a 3d mesh.
+grizzymodlr is a native macos app for turning one image into a 3d mesh.
 
 local first. no image uploads. shape and paint run on device through mlx swift.
 
@@ -120,7 +120,7 @@ onboarding offers fast start, best quality, everything, or skip.
 
 model management supports install, pause, resume, retry, import, and remove.
 
-all copy stays lowercase except modelr, class names, model ids, file paths, and protocol names.
+all copy stays lowercase except grizzymodlr, class names, model ids, file paths, and protocol names.
 
 ## verification
 

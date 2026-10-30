@@ -64,7 +64,7 @@ struct OnboardingView: View {
                 .font(.system(size: 52, weight: .light))
                 .foregroundStyle(.tint)
                 .padding(.top, 40)
-            Text("Welcome to Modelr")
+            Text("Welcome to GrizzyModlr")
                 .font(.title.weight(.semibold))
             Text("Image to 3D, on this Mac.")
                 .font(.callout)
@@ -278,7 +278,7 @@ struct OnboardingView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Spacer().frame(height: 16)
-            Button("Start using Modelr") { runtime.dispatch(.onboardingFinished) }
+            Button("Start using GrizzyModlr") { runtime.dispatch(.onboardingFinished) }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)

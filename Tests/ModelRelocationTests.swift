@@ -33,7 +33,7 @@ final class ModelRelocationTests: XCTestCase {
     }
 
     func testCopyThenRemoveSourcesMovesLibraryAndKeepsUnrelatedFiles() throws {
-        let src = try makeLibrary(), dst = tmp.appendingPathComponent("dst/Modelr Models", isDirectory: true)
+        let src = try makeLibrary(), dst = tmp.appendingPathComponent("dst/GrizzyModlr Models", isDirectory: true)
         let items = ModelRelocation.items(in: src)
         var lastDone: Int64 = 0
         try ModelRelocation.copy(items, from: src, to: dst, progress: { done, _ in lastDone = done }, isCancelled: { false })
@@ -77,7 +77,7 @@ final class ModelRelocationTests: XCTestCase {
     func testResolveRootAndVolumeHelpers() throws {
         let plain = tmp.appendingPathComponent("Drive", isDirectory: true)
         try FileManager.default.createDirectory(at: plain, withIntermediateDirectories: true)
-        XCTAssertEqual(ModelRelocation.resolveRoot(picked: plain).lastPathComponent, "Modelr Models")
+        XCTAssertEqual(ModelRelocation.resolveRoot(picked: plain).lastPathComponent, "GrizzyModlr Models")
         let lib = try makeLibrary()
         XCTAssertEqual(ModelRelocation.resolveRoot(picked: lib), lib)           // already a library
         XCTAssertTrue(ModelRelocation.sameVolume(tmp, tmp.appendingPathComponent("not/yet/created")))

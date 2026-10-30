@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct ModelrApp: App {
+struct GrizzyModlrApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var runtime = AppRuntime()
 

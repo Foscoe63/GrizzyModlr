@@ -143,9 +143,9 @@ enum ModelRelocation {
     }
 
     /// Folder to use inside a user-picked folder: the folder itself if it already holds model
-    /// slots (or is already named "Modelr Models"), else a "Modelr Models" subfolder.
+    /// slots (or is already named "GrizzyModlr Models"), else a "GrizzyModlr Models" subfolder.
     static func resolveRoot(picked: URL) -> URL {
-        if picked.lastPathComponent == "Modelr Models" || !items(in: picked).isEmpty { return picked }
-        return picked.appendingPathComponent("Modelr Models", isDirectory: true)
+        if picked.lastPathComponent == "GrizzyModlr Models" || !items(in: picked).isEmpty { return picked }
+        return picked.appendingPathComponent("GrizzyModlr Models", isDirectory: true)
     }
 }

@@ -1,4 +1,4 @@
-# modelr
+# grizzymodlr
 
 native macos app for local image → 3d. both the shape and texture pipelines run in-process on [mlx swift](https://github.com/zimengxiong/hunyuan3d-swift) (no python, no pytorch, nothing leaves the machine) and render live in scenekit as they generate.
 
@@ -6,7 +6,7 @@ https://github.com/user-attachments/assets/555b455d-5e79-429d-8f7f-b768ad8bf8da
 
 ## models
 
-modelr ships four models: one small and one large per stage. interested in integrating hunyuan3d into your app? checkout [hunyuan3d-swift](https://github.com/zimengxiong/hunyuan3d-swift)
+grizzymodlr ships four models: one small and one large per stage. interested in integrating hunyuan3d into your app? checkout [hunyuan3d-swift](https://github.com/zimengxiong/hunyuan3d-swift)
 
 times below are measured in-app on an M4 Max (with mesh decimation before paint).
 
@@ -19,7 +19,7 @@ times below are measured in-app on an M4 Max (with mesh decimation before paint)
 
 ## architecture!!
 
-modelr is a simple app, but a lot of time went into designing a nice architecture for it, since generation, downloading, and painting take a lot of time, everything is designed to be responsive, including cancellations, no hung processes 😁. modelr is built around a single pure reducer: `reduce(state, event) -> (state', [Effect])`,
+grizzymodlr is a simple app, but a lot of time went into designing a nice architecture for it, since generation, downloading, and painting take a lot of time, everything is designed to be responsive, including cancellations, no hung processes 😁. grizzymodlr is built around a single pure reducer: `reduce(state, event) -> (state', [Effect])`,
 so the entire transition table (onboarding, downloads, shape, paint, cancel/fail edges,
 stale-token protection) is unit-testable with no UI, network, or GPU. read
 [`DESIGN.md`](DESIGN.md) for agents.
@@ -48,10 +48,10 @@ everything lives under `~/Library/Application Support/Modelr/`:
 
 ## install
 
-modelr currently ships an apple-silicon build for macos 14 or later. download
-[`Modelr.zip`](https://github.com/ZimengXiong/Modelr/releases/latest/download/Modelr.zip),
-unzip it, and move `Modelr.app` to Applications. remove from quarentine:
+grizzymodlr currently ships an apple-silicon build for macos 14 or later. download
+[`GrizzyModlr.zip`](https://github.com/Foscoe63/GrizzyModlr/releases/latest/download/GrizzyModlr.zip),
+unzip it, and move `GrizzyModlr.app` to Applications. remove from quarentine:
 
 ```sh
-xattr -dr com.apple.quarantine /Applications/Modelr.app
+xattr -dr com.apple.quarantine /Applications/GrizzyModlr.app
 ```

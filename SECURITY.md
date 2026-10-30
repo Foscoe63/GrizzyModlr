@@ -3,7 +3,7 @@
 ## supported versions
 
 security fixes are made for the latest release on the
-[releases page](https://github.com/ZimengXiong/Modelr/releases).
+[releases page](https://github.com/Foscoe63/GrizzyModlr/releases).
 
 ## reporting a vulnerability
 

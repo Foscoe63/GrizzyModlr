@@ -25,7 +25,7 @@ final class TripoMeshTests: XCTestCase {
         f.reduce(0) { $0 + simd_dot(p[Int($1.x)], simd_cross(p[Int($1.y)], p[Int($1.z)])) / 6 }
     }
 
-    func testAxesMapToModelrFrameAndMeshIsClosedOutward() throws {
+    func testAxesMapToGrizzyModlrFrameAndMeshIsClosedOutward() throws {
         // an ellipsoid long along TripoSR's z (up) and offset toward +x (front) and +y (image-right)
         let d = density(n: 56, radius: 0.87, blobs: [(c: [0.1, 0.2, 0], r: [0.2, 0.25, 0.55])])
         let m = try XCTUnwrap(TripoMesh.extract(density: d, resolution: 56, radius: 0.87, threshold: 25))
@@ -33,9 +33,9 @@ final class TripoMeshTests: XCTestCase {
         XCTAssertGreaterThan(volume(m.positions, m.faces), 0)                         // outward winding survives the remap
         func extent(_ a: Int) -> (Float, Float) { (m.positions.map { $0[a] }.min()!, m.positions.map { $0[a] }.max()!) }
         let (xl, xh) = extent(0), (yl, yh) = extent(1), (zl, zh) = extent(2)
-        XCTAssertEqual(yh - yl, 1.1, accuracy: 0.1)                                   // TripoSR z → Modelr y (height)
-        XCTAssertEqual((xl + xh) / 2, 0.2, accuracy: 0.03)                            // TripoSR y → Modelr x
-        XCTAssertEqual((zl + zh) / 2, 0.1, accuracy: 0.03)                            // TripoSR x → Modelr z
+        XCTAssertEqual(yh - yl, 1.1, accuracy: 0.1)                                   // TripoSR z → GrizzyModlr y (height)
+        XCTAssertEqual((xl + xh) / 2, 0.2, accuracy: 0.03)                            // TripoSR y → GrizzyModlr x
+        XCTAssertEqual((zl + zh) / 2, 0.1, accuracy: 0.03)                            // TripoSR x → GrizzyModlr z
     }
 
     func testKeepsOnlyTheLargestPiece() throws {

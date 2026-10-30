@@ -71,7 +71,7 @@ struct MeshViewer: NSViewRepresentable {
         camera.zNear = 0.001
         camera.zFar = 1000
         let cameraNode = SCNNode()
-        cameraNode.name = "ModelrCamera"
+        cameraNode.name = "GrizzyModlrCamera"
         cameraNode.camera = camera
         cameraNode.position = SCNVector3(0, 0, 3.3)
         cameraNode.look(at: SCNVector3(0, 0, 0))

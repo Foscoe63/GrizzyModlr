@@ -184,7 +184,7 @@ final class PaintEngine {
         }
     }
 
-    /// Parse Modelr's `.mesh` (verts + normals + faces) into the paint package's
+    /// Parse GrizzyModlr's `.mesh` (verts + normals + faces) into the paint package's
     /// `LoadedMesh` (positions + faces only).
     private static func loadShapeMesh(_ url: URL) -> LoadedMesh? {
         guard let d = try? Data(contentsOf: url), d.count >= 8 else { return nil }
@@ -204,7 +204,7 @@ final class PaintEngine {
     }
 }
 
-/// Serializes a `PaintResult` into Modelr's `.tmesh`
+/// Serializes a `PaintResult` into GrizzyModlr's `.tmesh`
 /// (`[i32 nV][i32 nF][f32 verts][f32 normals][f32 uvs][i32 faces]`), computing
 /// area-weighted vertex normals.
 enum PaintMeshWriter {
