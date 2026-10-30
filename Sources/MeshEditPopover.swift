@@ -9,6 +9,9 @@ struct MeshEditPopover: View {
     var flowShown = false
     var flowBusy = false
     var onToggleFlow: () -> Void = {}
+    var guides: [FlowGuide] = []
+    var onDrawGuides: () -> Void = {}
+    var onClearGuides: () -> Void = {}
 
     @State private var targetK: Double = ToolDefaults.decimateK()
     @State private var smoothIterations: Double = ToolDefaults.smoothIterations()
@@ -190,7 +193,19 @@ extension MeshEditPopover {
             action("Quad remesh (aligned)", "square.grid.2x2") { .quadRemesh(resolution: Int(remeshRes)) }
             action("Flow remesh (experimental)", "wind") {
                 .flowRemesh(targetQuads: Int(ToolDefaults.flowTargetQuads()), featureAngle: Float(ToolDefaults.flowFeatureAngle()),
-                            fallbackResolution: Int(remeshRes))
+                            fallbackResolution: Int(remeshRes), guides: guides,
+                            guideStrength: Float(ToolDefaults.flowGuideStrength()))
+            }
+            HStack {
+                Button { onDrawGuides() } label: {
+                    Label("Draw flow guides", systemImage: "scribble.variable").frame(maxWidth: .infinity)
+                }
+                .help("Drag on the model to draw curves the quad rows should follow (around an eye, along a limb). Flow remesh and the flow field view use them.")
+                if !guides.isEmpty {
+                    Button(role: .destructive) { onClearGuides() } label: {
+                        Label("Clear \(guides.count)", systemImage: "xmark.circle")
+                    }
+                }
             }
             Button { onToggleFlow() } label: {
                 Label(flowShown ? "Hide flow field" : (flowBusy ? "Computing flow field…" : "Show flow field"),

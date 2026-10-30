@@ -18,6 +18,8 @@ enum FlowRemesh {
         var positionIterations = 120
         /// Gaps bounded by at most this many edges are filled with triangles.
         var maxHoleEdges = 8
+        var guides: [FlowGuide] = []
+        var guideStrength: Float = 40
     }
 
     struct Output {
@@ -58,6 +60,8 @@ enum FlowRemesh {
         var fieldOptions = CrossField.Options()
         fieldOptions.featureAngle = o.featureAngle
         fieldOptions.iterations = o.fieldIterations
+        fieldOptions.guides = o.guides
+        fieldOptions.guideWeight = o.guideStrength
         let field = CrossField.compute(topology: topology, options: fieldOptions)
         let pf = PositionField(field: field, rho: rho, iterations: o.positionIterations)
 
@@ -97,6 +101,60 @@ enum FlowRemesh {
         return Output(positions: mesh.positions, faces: tris, quads: mesh.quads,
                       filledTriangles: mesh.fillTriangles.count,
                       regularVertexShare: Float(regular) / Float(max(valence.count, 1)))
+    }
+
+    // MARK: metrics
+
+    struct Metrics {
+        /// Share of faces that belong to quads (the rest are triangles).
+        var quadShare: Float
+        /// Share of vertices with exactly four edges.
+        var regularShare: Float
+        /// Mean distance of a quad corner's angle from 90°, in degrees.
+        var cornerDeviation: Float
+        /// Mean distance from face centres to the input surface, in mean edge lengths.
+        var surfaceSag: Float
+        /// Largest such distance, in mean edge lengths.
+        var maxSurfaceSag: Float
+        /// Share of faces whose normal opposes the input surface.
+        var foldedShare: Float
+        var meanEdge: Float
+    }
+
+    static func metrics(of out: Output, surface positions: [SIMD3<Float>], faces: [SIMD3<UInt32>]) -> Metrics {
+        let closest = ClosestPoint(positions: positions, faces: faces)
+        let p = out.positions
+        var edgeSum: Float = 0, edgeCount = 0
+        var seen = Set<UInt64>()
+        func edge(_ a: UInt32, _ b: UInt32) {
+            if seen.insert(UInt64(min(a, b)) << 32 | UInt64(max(a, b))).inserted {
+                edgeSum += simd_distance(p[Int(a)], p[Int(b)]); edgeCount += 1
+            }
+        }
+        for f in out.faces { edge(f.x, f.y); edge(f.y, f.z); edge(f.z, f.x) }
+        let meanEdge = edgeSum / Float(max(edgeCount, 1))
+        var devSum: Float = 0, devCount = 0
+        for q in out.quads {
+            let c = [q.x, q.y, q.z, q.w].map { p[Int($0)] }
+            for i in 0..<4 {
+                let a = c[(i + 3) % 4] - c[i], b = c[(i + 1) % 4] - c[i]
+                let cosA = simd_dot(a, b) / max(simd_length(a) * simd_length(b), 1e-12)
+                devSum += abs(acos(max(-1, min(1, cosA))) * 180 / .pi - 90); devCount += 1
+            }
+        }
+        var sagSum: Float = 0, sagMax: Float = 0, folded = 0
+        for f in out.faces {
+            let (a, b, c) = (p[Int(f.x)], p[Int(f.y)], p[Int(f.z)])
+            let centre = (a + b + c) / 3
+            let sag = simd_distance(centre, closest.nearest(to: centre)) / max(meanEdge, 1e-12)
+            sagSum += sag; sagMax = max(sagMax, sag)
+            if simd_dot(simd_cross(b - a, c - a), closest.normal(at: centre)) < 0 { folded += 1 }
+        }
+        return Metrics(quadShare: Float(out.quads.count * 2) / Float(max(out.faces.count, 1)),
+                       regularShare: out.regularVertexShare,
+                       cornerDeviation: devSum / Float(max(devCount, 1)),
+                       surfaceSag: sagSum / Float(max(out.faces.count, 1)), maxSurfaceSag: sagMax,
+                       foldedShare: Float(folded) / Float(max(out.faces.count, 1)), meanEdge: meanEdge)
     }
 
     // MARK: fold repair

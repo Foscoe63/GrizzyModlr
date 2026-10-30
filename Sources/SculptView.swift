@@ -28,7 +28,14 @@ final class SculptController {
 /// SceneKit view with a brush layer: when a `SculptController` is attached, plain
 /// left-drag sculpts (ray-picked on the surface, with a ring cursor); holding ⌥
 /// falls through to the normal orbit camera. Scroll/pinch zoom is unaffected.
+/// Collects a stroke drawn on the model (flow guides) as points in the mesh's coordinates.
+final class GuideRecorder {
+    var onStroke: ([SIMD3<Float>]) -> Void = { _ in }
+}
+
 final class SculptSCNView: SCNView {
+    var guideRecorder: GuideRecorder?
+    private var guideStroke: [SIMD3<Float>]?
     private(set) var controller: SculptController?
     private var sculptNode: SCNNode?
     private var element: SCNGeometryElement?
@@ -241,7 +248,30 @@ final class SculptSCNView: SCNView {
 
     // MARK: events
 
+    /// Ray-picks the model (not the flow overlay or guides) and returns the hit in mesh coordinates.
+    private func pickGuidePoint(_ event: NSEvent) -> SIMD3<Float>? {
+        guard let container = scene?.rootNode.childNode(withName: "MeshContainer", recursively: false) else { return nil }
+        let p = convert(event.locationInWindow, from: nil)
+        let hits = hitTest(p, options: [.rootNode: container, .searchMode: SCNHitTestSearchMode.closest.rawValue,
+                                        .ignoreHiddenNodes: true])
+        guard let h = hits.first else { return nil }
+        let local = container.convertPosition(h.worldCoordinates, from: nil)
+        return SIMD3(Float(local.x), Float(local.y), Float(local.z))
+    }
+
+    private func addGuidePoint(_ event: NSEvent) {
+        guard let point = pickGuidePoint(event) else { return }
+        let radius = Float(scene?.rootNode.childNode(withName: "MeshContainer", recursively: false)?.boundingSphere.radius ?? 1)
+        if let last = guideStroke?.last, simd_distance(last, point) < radius * 0.015 { return }
+        guideStroke?.append(point)
+    }
+
     override func mouseDown(with event: NSEvent) {
+        if guideRecorder != nil, !event.modifierFlags.contains(.option) {
+            guideStroke = []
+            addGuidePoint(event)
+            return
+        }
         guard sculpting(event) else { cursor?.isHidden = true; super.mouseDown(with: event); return }
         MainActor.assumeIsolated {
             controller?.mesh.beginStroke()
@@ -253,11 +283,17 @@ final class SculptSCNView: SCNView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if guideStroke != nil { addGuidePoint(event); return }
         guard stroking else { super.mouseDragged(with: event); return }
         MainActor.assumeIsolated { dab(event) }
     }
 
     override func mouseUp(with event: NSEvent) {
+        if let stroke = guideStroke {
+            guideStroke = nil
+            if stroke.count >= 2 { guideRecorder?.onStroke(stroke) }
+            return
+        }
         guard stroking else { super.mouseUp(with: event); return }
         stroking = false
         MainActor.assumeIsolated {

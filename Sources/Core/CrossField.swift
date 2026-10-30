@@ -25,6 +25,9 @@ struct CrossField {
         /// How strongly curvature pulls on the field relative to neighbor smoothing (0…∞).
         var curvatureWeight: Float = 1.5
         var featureWeight: Float = 12
+        /// Curves the field must follow, and how hard they pull relative to the creases.
+        var guides: [FlowGuide] = []
+        var guideWeight: Float = 40
     }
 
     // MARK: - construction
@@ -57,6 +60,24 @@ struct CrossField {
                 let d = edge / len
                 hard[i] += o.featureWeight * unit(4 * t.angle(of: d, in: i))
                 hard[nb.face] += o.featureWeight * unit(4 * t.angle(of: d, in: nb.face))
+            }
+        }
+        // Guides: faces near a guide curve align an axis with the curve's direction.
+        if !o.guides.isEmpty {
+            let reach = max(t.averageEdgeLength * 2.5, 1e-9)
+            for guide in o.guides {
+                for (a, b) in guide.segments(maxLength: reach * 0.5) {
+                    let dir = b - a
+                    let len = simd_length(dir)
+                    guard len > 1e-12 else { continue }
+                    let d = dir / len
+                    let mid = (a + b) / 2
+                    for i in 0..<n {
+                        let dist = simd_distance(t.centroid(i), mid)
+                        guard dist <= reach else { continue }
+                        hard[i] += o.guideWeight * (1 - dist / reach) * unit(4 * t.angle(of: d, in: i))
+                    }
+                }
             }
         }
         for i in 0..<n {

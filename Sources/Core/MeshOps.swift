@@ -13,7 +13,7 @@ enum MeshEdit: Equatable {
     case remesh(resolution: Int)
     /// Remesh in the model's own axis frame with sharp edges kept, giving quad rows along its flats.
     case quadRemesh(resolution: Int)
-    case flowRemesh(targetQuads: Int, featureAngle: Float, fallbackResolution: Int)
+    case flowRemesh(targetQuads: Int, featureAngle: Float, fallbackResolution: Int, guides: [FlowGuide] = [], guideStrength: Float = 40)
 
     var label: String {
         switch self {
@@ -23,7 +23,7 @@ enum MeshEdit: Equatable {
         case .symmetrize(let axis, let positive): return "mirrored \(positive ? "+" : "−")\(axis.rawValue.uppercased()) half"
         case .remesh(let n): return "remeshed at \(n)"
         case .quadRemesh(let n): return "quad remeshed at \(n)"
-        case .flowRemesh(let q, _, _): return "flow remeshed to ~\(q) quads"
+        case .flowRemesh(let q, _, _, _, _): return "flow remeshed to ~\(q) quads"
         }
     }
 }
@@ -268,9 +268,9 @@ enum MeshOps {
             let share = r.faces.isEmpty ? 0 : Int((Float(pairs.quads.count * 2) / Float(r.faces.count) * 100).rounded())
             return Result(positions: r.positions, faces: r.faces,
                           note: "\(faces.count) → \(r.faces.count) triangles, \(share)% pair into quads", changed: true)
-        case .flowRemesh(let target, let angle, let fallback):
+        case .flowRemesh(let target, let angle, let fallback, let guides, let strength):
             var o = FlowRemesh.Options()
-            o.targetQuads = target; o.featureAngle = angle
+            o.targetQuads = target; o.featureAngle = angle; o.guides = guides; o.guideStrength = strength
             if let r = FlowRemesh.remesh(positions: positions, faces: faces, options: o) {
                 let pct = Int((Float(r.quads.count * 2) / Float(max(r.faces.count, 1)) * 100).rounded())
                 return Result(positions: r.positions, faces: r.faces,

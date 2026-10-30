@@ -98,4 +98,119 @@ final class FlowRemeshTests: XCTestCase {
             try? obj.write(toFile: out, atomically: true, encoding: .utf8)
         }
     }
+
+    // MARK: M7 — metrics on clean shapes
+
+    private func cylinder(seg: Int = 48, rings: Int = 24) -> ([SIMD3<Float>], [SIMD3<UInt32>]) {
+        var p: [SIMD3<Float>] = []
+        for r in 0...rings { for s in 0..<seg {
+            let a = 2 * Float.pi * Float(s) / Float(seg)
+            p.append([cos(a), sin(a), -2 + 4 * Float(r) / Float(rings)])
+        } }
+        var f: [SIMD3<UInt32>] = []
+        for r in 0..<rings { for s in 0..<seg {
+            let a = UInt32(r * seg + s), b = UInt32(r * seg + (s + 1) % seg)
+            let c = UInt32((r + 1) * seg + (s + 1) % seg), d = UInt32((r + 1) * seg + s)
+            f.append([a, b, c]); f.append([a, c, d])
+        } }
+        let bottom = UInt32(p.count); p.append([0, 0, -2])
+        let top = UInt32(p.count); p.append([0, 0, 2])
+        for s in 0..<seg {
+            let a = UInt32(s), b = UInt32((s + 1) % seg)
+            f.append([bottom, b, a])
+            let ta = UInt32(rings * seg + s), tb = UInt32(rings * seg + (s + 1) % seg)
+            f.append([top, ta, tb])
+        }
+        return (p, f)
+    }
+
+    /// Box with rounded edges and corners (half-size 1, corner radius 0.35), `n` cells per side.
+    private func roundedBox(_ n: Int = 24) -> ([SIMD3<Float>], [SIMD3<UInt32>]) {
+        var index: [[Int]: UInt32] = [:]
+        var p: [SIMD3<Float>] = []
+        func vertex(_ i: Int, _ j: Int, _ k: Int) -> UInt32 {
+            if let v = index[[i, j, k]] { return v }
+            let cube = SIMD3<Float>(Float(i), Float(j), Float(k)) / Float(n) * 2 - 1
+            let core = simd_clamp(cube, SIMD3(repeating: -0.65), SIMD3(repeating: 0.65))
+            let out = cube - core
+            p.append(simd_length(out) > 1e-6 ? core + simd_normalize(out) * 0.35 : cube)
+            index[[i, j, k]] = UInt32(p.count - 1)
+            return UInt32(p.count - 1)
+        }
+        var f: [SIMD3<UInt32>] = []
+        func quad(_ a: UInt32, _ b: UInt32, _ c: UInt32, _ d: UInt32) {
+            let pa = p[Int(a)], pb = p[Int(b)], pc = p[Int(c)]
+            let outward = simd_dot(simd_cross(pb - pa, pc - pa), pa + pb + pc) > 0
+            if outward { f.append([a, b, c]); f.append([a, c, d]) } else { f.append([a, c, b]); f.append([a, d, c]) }
+        }
+        for u in 0..<n { for v in 0..<n {
+            for side in [0, n] {
+                quad(vertex(side, u, v), vertex(side, u + 1, v), vertex(side, u + 1, v + 1), vertex(side, u, v + 1))
+                quad(vertex(u, side, v), vertex(u + 1, side, v), vertex(u + 1, side, v + 1), vertex(u, side, v + 1))
+                quad(vertex(u, v, side), vertex(u + 1, v, side), vertex(u + 1, v + 1, side), vertex(u, v + 1, side))
+            }
+        } }
+        return (p, f)
+    }
+
+    private func checkMetrics(_ name: String, _ shape: ([SIMD3<Float>], [SIMD3<UInt32>]), quads: Int,
+                              minRegular: Float, maxCorner: Float,
+                              file: StaticString = #filePath, line: UInt = #line) throws {
+        var o = FlowRemesh.Options(); o.targetQuads = quads
+        let r = try XCTUnwrap(FlowRemesh.remesh(positions: shape.0, faces: shape.1, options: o), "\(name) didn't close",
+                              file: file, line: line)
+        let m = FlowRemesh.metrics(of: r, surface: shape.0, faces: shape.1)
+        print("METRICS \(name): quads \(r.quads.count) quadShare \(m.quadShare) regular \(m.regularShare) corner° \(m.cornerDeviation) sag \(m.surfaceSag) maxSag \(m.maxSurfaceSag) folded \(m.foldedShare)")
+        XCTAssertGreaterThan(Float(r.quads.count), Float(quads) * 0.5, "\(name) quad count", file: file, line: line)
+        XCTAssertGreaterThan(m.quadShare, 0.6, "\(name) quad share", file: file, line: line)
+        XCTAssertGreaterThan(m.regularShare, minRegular, "\(name) valence-4 share", file: file, line: line)
+        XCTAssertLessThan(m.cornerDeviation, maxCorner, "\(name) corner angles", file: file, line: line)
+        XCTAssertLessThan(m.surfaceSag, 0.08, "\(name) distance to surface", file: file, line: line)
+        XCTAssertLessThan(m.maxSurfaceSag, 0.7, "\(name) worst distance to surface", file: file, line: line)
+        XCTAssertLessThan(m.foldedShare, 0.03, "\(name) folded faces", file: file, line: line)
+    }
+
+    func testMetricsOnCleanShapes() throws {
+        try checkMetrics("sphere", icosphere(4), quads: 200, minRegular: 0.3, maxCorner: 30)
+        try checkMetrics("cylinder", cylinder(), quads: 300, minRegular: 0.7, maxCorner: 13)
+        try checkMetrics("torus", torus(), quads: 400, minRegular: 0.75, maxCorner: 10)
+        try checkMetrics("roundedBox", roundedBox(), quads: 300, minRegular: 0.7, maxCorner: 10)
+    }
+
+    // MARK: M8 — guides
+
+    func testGuideCurvePinsTheFieldToItsDirection() {
+        // A flat 20×20 sheet has no curvature to steer the field, so a guide at 45° decides it.
+        let n = 20
+        var p: [SIMD3<Float>] = []
+        for y in 0...n { for x in 0...n { p.append([Float(x) / Float(n), Float(y) / Float(n), 0]) } }
+        var f: [SIMD3<UInt32>] = []
+        for y in 0..<n { for x in 0..<n {
+            let a = UInt32(y * (n + 1) + x), b = a + 1, c = a + UInt32(n + 2), d = a + UInt32(n + 1)
+            f.append([a, b, c]); f.append([a, c, d])
+        } }
+        let topology = MeshTopology(positions: p, faces: f)
+        let dir = simd_normalize(SIMD3<Float>(1, 1, 0))
+        var o = CrossField.Options()
+        o.guides = [FlowGuide(points: [[0.2, 0.2, 0], [0.8, 0.8, 0]])]
+        let field = CrossField.compute(topology: topology, options: o)
+        var near = 0, aligned = 0
+        for i in 0..<f.count {
+            let c = topology.centroid(i)
+            let line = abs(c.x - c.y) / Float(2).squareRoot()                  // distance to the diagonal
+            guard line < topology.averageEdgeLength, c.x > 0.3, c.x < 0.7 else { continue }
+            near += 1
+            let (u, v) = field.axes(face: i)
+            if max(abs(simd_dot(u, dir)), abs(simd_dot(v, dir))) > cos(12 * Float.pi / 180) { aligned += 1 }
+        }
+        XCTAssertGreaterThan(near, 10)
+        XCTAssertEqual(aligned, near)
+    }
+
+    func testGuideSegmentsAreSplitToTheSpacing() {
+        let g = FlowGuide(points: [[0, 0, 0], [1, 0, 0]])
+        let s = g.segments(maxLength: 0.25)
+        XCTAssertEqual(s.count, 4)
+        XCTAssertEqual(s.last?.1.x ?? 0, 1, accuracy: 1e-6)
+    }
 }

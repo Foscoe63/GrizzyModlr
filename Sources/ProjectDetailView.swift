@@ -15,6 +15,9 @@ struct ProjectDetailView: View {
     @State private var showMeshEdit = false
     @State private var flowOverlay: FlowOverlay?
     @State private var flowBusy = false
+    @State private var flowGuides: [FlowGuide] = []
+    @State private var drawingGuides = false
+    @State private var guideRecorder = GuideRecorder()
     @State private var sculpt: SculptController?
     @State private var sculptBusy = false
     @State private var texturePaint: TexturePaintController?
@@ -550,7 +553,7 @@ struct ProjectDetailView: View {
         ZStack {
             if let content = displayedContent {
                 MeshViewer(content: content, onLoading: { objectLoading = $0 }, sculpt: sculpt, command: shapeViewerCommand,
-                           overlay: flowOverlay)
+                           overlay: flowOverlay, guides: flowGuides, guideRecorder: drawingGuides ? guideRecorder : nil)
             } else if shapeJob.isRunning {
                 PointCloud()                     // animation while loading (no content yet)
                     .frame(width: 150, height: 150)
@@ -565,6 +568,22 @@ struct ProjectDetailView: View {
             }
             exportOverlay(meshURL: shapeJob.isRunning ? nil : store.shapeMeshURL(for: project),
                           texture: nil, editable: !shapeJob.isRunning && sculpt == nil)
+            if drawingGuides {
+                VStack {
+                    HStack(spacing: 10) {
+                        Image(systemName: "scribble.variable")
+                        Text("Drag on the model to draw a flow guide · hold ⌥ to orbit").font(.caption)
+                        if !flowGuides.isEmpty {
+                            Button("Undo") { flowGuides.removeLast() }.controlSize(.small)
+                        }
+                        Button("Done") { drawingGuides = false }.controlSize(.small).buttonStyle(.borderedProminent)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    Spacer()
+                }
+                .padding(12)
+            }
             if let sculpt {
                 VStack {
                     Spacer()
@@ -636,9 +655,17 @@ struct ProjectDetailView: View {
                                 if flowOverlay != nil { flowOverlay = nil; return }
                                 flowBusy = true
                                 Task {
-                                    flowOverlay = await store.flowOverlay(for: project.id)
+                                    flowOverlay = await store.flowOverlay(for: project.id, guides: flowGuides)
                                     flowBusy = false
                                 }
+                            }, guides: flowGuides, onDrawGuides: {
+                                showMeshEdit = false
+                                flowOverlay = nil
+                                guideRecorder.onStroke = { points in flowGuides.append(FlowGuide(points: points)) }
+                                drawingGuides = true
+                            }, onClearGuides: {
+                                flowGuides = []
+                                flowOverlay = nil
                             }).environment(store)
                         }
                     }

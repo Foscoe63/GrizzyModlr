@@ -737,15 +737,18 @@ final class ProjectStore {
     }
 
     /// Computes the cross field of the selected shape for display (off the main actor).
-    func flowOverlay(for id: Project.ID) async -> FlowOverlay? {
+    func flowOverlay(for id: Project.ID, guides: [FlowGuide] = []) async -> FlowOverlay? {
         guard let project = project(id), let cur = project.currentGeneration else { return nil }
         let baseID = cur.kind == .shape ? cur.id : cur.sourceShapeID
         guard let base = project.generations.first(where: { $0.id == baseID }) else { return nil }
         let src = folder(for: id).appendingPathComponent(base.meshFileName)
-        let options = CrossField.Options(featureAngle: Float(ToolDefaults.flowFeatureAngle()))
+        var options = CrossField.Options(featureAngle: Float(ToolDefaults.flowFeatureAngle()))
+        options.guides = guides
+        options.guideWeight = Float(ToolDefaults.flowGuideStrength())
+        let fieldOptions = options
         return await Task.detached(priority: .userInitiated) { () -> FlowOverlay? in
             guard let raw = try? Data(contentsOf: src), let mesh = MeshDecimator.parse(raw), !mesh.faces.isEmpty else { return nil }
-            let field = CrossField.computeAdaptive(positions: mesh.positions, faces: mesh.faces, options: options)
+            let field = CrossField.computeAdaptive(positions: mesh.positions, faces: mesh.faces, options: fieldOptions)
             return FlowOverlay.make(from: field)
         }.value
     }

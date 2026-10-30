@@ -24,6 +24,9 @@ struct MeshViewer: NSViewRepresentable {
     var command: ViewerCommand? = nil
     /// Optional cross-field drawing shown over the mesh.
     var overlay: FlowOverlay? = nil
+    /// Flow guide curves drawn on the model; with a recorder set, left-drag draws a new one.
+    var guides: [FlowGuide] = []
+    var guideRecorder: GuideRecorder? = nil
 
     @AppStorage(ViewerDefaults.Key.environment) private var envName = ViewerDefaults.fallbackEnvironment
     @AppStorage(ViewerDefaults.Key.environmentIntensity) private var envIntensity = ViewerDefaults.fallbackIntensity
@@ -46,6 +49,7 @@ struct MeshViewer: NSViewRepresentable {
         var lastFitRadius: CGFloat?
         var lastCommand: UUID?
         var lastOverlay: UUID?
+        var lastGuides: [FlowGuide] = []
     }
 
     func makeNSView(context: Context) -> SculptSCNView {
@@ -86,7 +90,17 @@ struct MeshViewer: NSViewRepresentable {
     }
 
     func updateNSView(_ view: SculptSCNView, context: Context) {
-        ViewerStage.apply(view, options: stageOptions, allowSpin: sculpt == nil && paint == nil)
+        ViewerStage.apply(view, options: stageOptions, allowSpin: sculpt == nil && paint == nil && guideRecorder == nil)
+        view.guideRecorder = guideRecorder
+        if context.coordinator.lastGuides != guides {
+            context.coordinator.lastGuides = guides
+            view.scene?.rootNode.childNode(withName: "FlowGuides", recursively: false)?.removeFromParentNode()
+            if !guides.isEmpty {
+                let node = FlowGuide.node(for: guides)
+                if let container = container(in: view) { node.transform = container.transform }
+                view.scene?.rootNode.addChildNode(node)
+            }
+        }
         if context.coordinator.lastOverlay != overlay?.id {
             context.coordinator.lastOverlay = overlay?.id
             view.scene?.rootNode.childNode(withName: "FlowOverlay", recursively: false)?.removeFromParentNode()

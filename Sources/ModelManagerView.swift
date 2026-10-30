@@ -306,6 +306,7 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.aiFillGuidance) private var aiFillGuidance = ToolDefaults.fallbackAIFillGuidance
     @AppStorage(ToolDefaults.Key.flowFeatureAngle) private var flowFeatureAngle = ToolDefaults.fallbackFlowFeatureAngle
     @AppStorage(ToolDefaults.Key.flowTargetQuads) private var flowTargetQuads = ToolDefaults.fallbackFlowTargetQuads
+    @AppStorage(ToolDefaults.Key.flowGuideStrength) private var flowGuideStrength = ToolDefaults.fallbackFlowGuideStrength
     @AppStorage(ToolDefaults.Key.regionTolerance) private var regionTolerance = ToolDefaults.fallbackRegionTolerance
     @AppStorage(ToolDefaults.Key.regionFeather) private var regionFeather = ToolDefaults.fallbackRegionFeather
     @AppStorage(ToolDefaults.Key.tsrThreshold) private var tsrThreshold = ToolDefaults.fallbackTSRThreshold
@@ -400,8 +401,9 @@ struct ToolSettingsView: View {
             }
             Section("Flow field") {
                 LabeledContent("Crease angle") { slider($flowFeatureAngle, 10...80, step: 5, label: "\(Int(flowFeatureAngle))°") }
+                LabeledContent("Guide strength") { slider($flowGuideStrength, 5...100, step: 5, label: "\(Int(flowGuideStrength))") }
                 LabeledContent("Flow remesh quads") { slider($flowTargetQuads, 500...8000, step: 500, label: "\(Int(flowTargetQuads))") }
-                Text("Edges sharper than this are treated as creases the flow lines follow. Used by the flow field view and flow remesh.")
+                Text("Edges sharper than this are treated as creases the flow lines follow. Used by the flow field view and flow remesh. Guide strength is how hard drawn guide curves pull the flow compared with creases.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Material regions") {
@@ -453,6 +455,7 @@ struct ToolSettingsView: View {
         aiFillStrength = ToolDefaults.fallbackAIFillStrength; aiFillGuidance = ToolDefaults.fallbackAIFillGuidance
         flowFeatureAngle = ToolDefaults.fallbackFlowFeatureAngle
         flowTargetQuads = ToolDefaults.fallbackFlowTargetQuads
+        flowGuideStrength = ToolDefaults.fallbackFlowGuideStrength
         regionTolerance = ToolDefaults.fallbackRegionTolerance; regionFeather = ToolDefaults.fallbackRegionFeather
         tsrThreshold = ToolDefaults.fallbackTSRThreshold; tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
         tsrKeepLargest = true
