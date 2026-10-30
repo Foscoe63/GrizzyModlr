@@ -213,4 +213,81 @@ final class FlowRemeshTests: XCTestCase {
         XCTAssertEqual(s.count, 4)
         XCTAssertEqual(s.last?.1.x ?? 0, 1, accuracy: 1e-6)
     }
+
+    /// Opt-in: FLOW_MESH=<.mesh>. Draws a guide across the model and compares how well the field and
+    /// the remeshed edges follow it with and without the guide.
+    func testGuideBendsRealScan() throws {
+        guard let path = ProcessInfo.processInfo.environment["FLOW_MESH"] else { throw XCTSkip("set FLOW_MESH") }
+        let mesh = try XCTUnwrap(MeshDecimator.parse(Data(contentsOf: URL(fileURLWithPath: path))))
+        let closest = ClosestPoint(positions: mesh.positions, faces: mesh.faces)
+        var lo = SIMD3<Float>(repeating: .infinity), hi = SIMD3<Float>(repeating: -.infinity)
+        for p in mesh.positions { lo = simd_min(lo, p); hi = simd_max(hi, p) }
+        // A slanted line across the front of the chest, projected onto the surface.
+        let width = hi.x - lo.x
+        let y0 = lo.y + (hi.y - lo.y) * 0.55
+        var pts: [SIMD3<Float>] = []
+        for k in 0...30 {
+            let t = Float(k) / 30
+            let probe = SIMD3<Float>(lo.x + width * (0.2 + 0.6 * t), y0 + width * 0.25 * (t - 0.5), hi.z + width)
+            pts.append(closest.nearest(to: probe))
+        }
+        let guide = FlowGuide(points: pts)
+        let segs = guide.segments(maxLength: width * 0.01)
+
+        func tangent(near p: SIMD3<Float>) -> (dir: SIMD3<Float>, dist: Float)? {
+            var best: (SIMD3<Float>, Float)?
+            for (a, b) in segs {
+                let ab = b - a, l2 = simd_dot(ab, ab)
+                guard l2 > 1e-18 else { continue }
+                let t = max(0, min(1, simd_dot(p - a, ab) / l2))
+                let d = simd_distance(p, a + ab * t)
+                if best == nil || d < best!.1 { best = (simd_normalize(ab), d) }
+            }
+            return best.map { ($0.0, $0.1) }
+        }
+
+        // 1. The cross field itself.
+        func fieldAlignment(_ guides: [FlowGuide]) -> (near: Int, aligned: Int, far: Int) {
+            var o = CrossField.Options(); o.guides = guides
+            if let w = ProcessInfo.processInfo.environment["GUIDE_W"].flatMap(Float.init) { o.guideWeight = w }
+            let field = CrossField.computeAdaptive(positions: mesh.positions, faces: mesh.faces, options: o)
+            let t = field.topology
+            let reach = t.averageEdgeLength * 2
+            var near = 0, aligned = 0
+            for i in 0..<t.faces.count {
+                guard let g = tangent(near: t.centroid(i)), g.dist < reach else { continue }
+                near += 1
+                let (u, v) = field.axes(face: i)
+                let d = g.dir - t.faceNormal[i] * simd_dot(g.dir, t.faceNormal[i])
+                guard simd_length(d) > 1e-6 else { continue }
+                let n = simd_normalize(d)
+                if max(abs(simd_dot(u, n)), abs(simd_dot(v, n))) > cos(15 * Float.pi / 180) { aligned += 1 }
+            }
+            return (near, aligned, t.faces.count - near)
+        }
+        let plain = fieldAlignment([]), guided = fieldAlignment([guide])
+        print("GUIDE field: faces near guide \(plain.near)/\(guided.near); aligned within 15°: without \(plain.aligned) (\(100 * plain.aligned / max(plain.near, 1))%), with \(guided.aligned) (\(100 * guided.aligned / max(guided.near, 1))%)")
+
+        // 2. The remeshed edges near the guide.
+        func edgeAlignment(_ guides: [FlowGuide]) -> (edges: Int, aligned: Int, quads: Int)? {
+            var o = FlowRemesh.Options(); o.targetQuads = 2000; o.guides = guides
+            if let w = ProcessInfo.processInfo.environment["GUIDE_W"].flatMap(Float.init) { o.guideStrength = w }
+            guard let r = FlowRemesh.remesh(positions: mesh.positions, faces: mesh.faces, options: o) else { return nil }
+            let rho = (r.positions.isEmpty ? 0 : width / 40)
+            var edges = 0, aligned = 0
+            for q in r.quads {
+                let c = [q.x, q.y, q.z, q.w]
+                for k in 0..<4 {
+                    let a = r.positions[Int(c[k])], b = r.positions[Int(c[(k + 1) % 4])]
+                    let e = b - a
+                    guard simd_length(e) > 1e-9, let g = tangent(near: (a + b) / 2), g.dist < rho else { continue }
+                    edges += 1
+                    if abs(simd_dot(simd_normalize(e), g.dir)) > cos(25 * Float.pi / 180) { aligned += 1 }
+                }
+            }
+            return (edges, aligned, r.quads.count)
+        }
+        let a = edgeAlignment([]), b = edgeAlignment([guide])
+        print("GUIDE remesh: edges near guide without \(a?.edges ?? -1) aligned(25°) \(a?.aligned ?? -1); with \(b?.edges ?? -1) aligned \(b?.aligned ?? -1); quads \(a?.quads ?? -1) → \(b?.quads ?? -1)")
+    }
 }

@@ -64,7 +64,7 @@ struct CrossField {
         }
         // Guides: faces near a guide curve align an axis with the curve's direction.
         if !o.guides.isEmpty {
-            let reach = max(t.averageEdgeLength * 2.5, 1e-9)
+            let reach = max(t.averageEdgeLength * 3.5, 1e-9)
             for guide in o.guides {
                 for (a, b) in guide.segments(maxLength: reach * 0.5) {
                     let dir = b - a
@@ -75,7 +75,7 @@ struct CrossField {
                     for i in 0..<n {
                         let dist = simd_distance(t.centroid(i), mid)
                         guard dist <= reach else { continue }
-                        hard[i] += o.guideWeight * (1 - dist / reach) * unit(4 * t.angle(of: d, in: i))
+                        hard[i] += o.guideWeight * (dist < reach * 0.6 ? 1 : (1 - dist / reach) / 0.4) * unit(4 * t.angle(of: d, in: i))
                     }
                 }
             }
