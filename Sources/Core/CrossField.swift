@@ -19,7 +19,9 @@ struct CrossField {
     struct Options {
         /// Dihedral angle (degrees) above which an edge is a crease the field must follow.
         var featureAngle: Float = 35
-        var iterations = 250
+        var iterations = 600
+        /// The data pull is annealed down over this many passes so smoothness wins at large scale.
+        var passes = 6
         /// How strongly curvature pulls on the field relative to neighbor smoothing (0…∞).
         var curvatureWeight: Float = 1.5
         var featureWeight: Float = 12
@@ -30,7 +32,8 @@ struct CrossField {
     static func compute(topology t: MeshTopology, options o: Options = Options()) -> CrossField {
         let n = t.faces.count
         var z = [SIMD2<Float>](repeating: SIMD2(1, 0), count: n)         // e^{i4θ}
-        var target = [SIMD2<Float>](repeating: .zero, count: n)
+        var target = [SIMD2<Float>](repeating: .zero, count: n)       // curvature seeds
+        var hard = [SIMD2<Float>](repeating: .zero, count: n)         // crease constraints
 
         // Curvature: weight by anisotropy relative to the strongly anisotropic faces.
         var curv: [(Float, Float)] = []
@@ -52,14 +55,17 @@ struct CrossField {
                 let len = simd_length(edge)
                 guard len > 1e-12 else { continue }
                 let d = edge / len
-                target[i] += o.featureWeight * unit(4 * t.angle(of: d, in: i))
-                target[nb.face] += o.featureWeight * unit(4 * t.angle(of: d, in: nb.face))
+                hard[i] += o.featureWeight * unit(4 * t.angle(of: d, in: i))
+                hard[nb.face] += o.featureWeight * unit(4 * t.angle(of: d, in: nb.face))
             }
         }
-        for i in 0..<n where simd_length(target[i]) > 0 { z[i] = simd_normalize(target[i]) }
+        for i in 0..<n {
+            let seed = target[i] + hard[i]
+            if simd_length(seed) > 0 { z[i] = simd_normalize(seed) }
+        }
 
         // Transport rotation of 4θ from face g into face f across their shared edge.
-        struct Link { var face: Int; var rot: SIMD2<Float> }
+        struct Link { var face: Int; var rot: SIMD2<Float>; var weight: Float }
         var links = [[Link]](repeating: [], count: n)
         for f in 0..<n {
             for nb in t.neighbors[f] {
@@ -68,18 +74,25 @@ struct CrossField {
                 guard len > 1e-12 else { continue }
                 let d = e / len
                 let delta = t.angle(of: d, in: f) - t.angle(of: d, in: nb.face)    // α_f − α_g
-                links[f].append(Link(face: nb.face, rot: unit(4 * delta)))
+                // Dual-graph Laplacian weight: shared edge length over the distance between face centers,
+                // so long thin faces don't dominate and irregular (decimated) meshes still smooth well.
+                let weight = len / max(simd_distance(t.centroid(f), t.centroid(nb.face)), 1e-12)
+                links[f].append(Link(face: nb.face, rot: unit(4 * delta), weight: weight))
             }
         }
 
         // Gauss–Seidel in breadth-first order so information spreads from the seeds.
-        let order = breadthFirst(t, seeds: (0..<n).filter { simd_length(target[$0]) > 0 })
-        for _ in 0..<o.iterations {
-            for f in order {
-                var sum = target[f]
-                for l in links[f] { sum += mul(z[l.face], l.rot) }
-                let len = simd_length(sum)
-                if len > 1e-9 { z[f] = sum / len }
+        let order = breadthFirst(t, seeds: (0..<n).filter { simd_length(target[$0] + hard[$0]) > 0 })
+        let passes = max(1, o.passes), perPass = max(1, o.iterations / passes)
+        for pass in 0..<passes {
+            let pull = powf(0.5, Float(pass))                               // 1, ½, ¼, …
+            for _ in 0..<perPass {
+                for f in order {
+                    var sum = target[f] * pull + hard[f]
+                    for l in links[f] { sum += mul(z[l.face], l.rot) * l.weight }
+                    let len = simd_length(sum)
+                    if len > 1e-9 { z[f] = sum / len }
+                }
             }
         }
         var angle = [Float](repeating: 0, count: n)
@@ -89,6 +102,20 @@ struct CrossField {
             angle[i] = a
         }
         return CrossField(topology: t, angle: angle)
+    }
+
+    /// Field on a mesh simplified to about `maxFaces`: smoothing only reaches a fixed number of faces,
+    /// so a dense scan needs a coarser mesh for the flow to be smooth at the scale of the whole shape.
+    /// The field's own `topology` is the simplified mesh.
+    static func computeAdaptive(positions: [SIMD3<Float>], faces: [SIMD3<UInt32>], maxFaces: Int = 12_000,
+                                options: Options = Options()) -> CrossField {
+        if faces.count > maxFaces {
+            let r = MeshDecimator.decimate(positions: positions, faces: faces, faceBudget: maxFaces)
+            if !r.faces.isEmpty, r.positions.count >= 3 {
+                return compute(topology: MeshTopology(positions: r.positions, faces: r.faces), options: options)
+            }
+        }
+        return compute(topology: MeshTopology(positions: positions, faces: faces), options: options)
     }
 
     private static func unit(_ a: Float) -> SIMD2<Float> { SIMD2(cos(a), sin(a)) }

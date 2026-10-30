@@ -736,6 +736,20 @@ final class ProjectStore {
         return nil
     }
 
+    /// Computes the cross field of the selected shape for display (off the main actor).
+    func flowOverlay(for id: Project.ID) async -> FlowOverlay? {
+        guard let project = project(id), let cur = project.currentGeneration else { return nil }
+        let baseID = cur.kind == .shape ? cur.id : cur.sourceShapeID
+        guard let base = project.generations.first(where: { $0.id == baseID }) else { return nil }
+        let src = folder(for: id).appendingPathComponent(base.meshFileName)
+        let options = CrossField.Options(featureAngle: Float(ToolDefaults.flowFeatureAngle()))
+        return await Task.detached(priority: .userInitiated) { () -> FlowOverlay? in
+            guard let raw = try? Data(contentsOf: src), let mesh = MeshDecimator.parse(raw), !mesh.faces.isEmpty else { return nil }
+            let field = CrossField.computeAdaptive(positions: mesh.positions, faces: mesh.faces, options: options)
+            return FlowOverlay.make(from: field)
+        }.value
+    }
+
     /// Applies a mesh edit to the selected shape (for a paint version, the shape it
     /// textured) and saves the result as a new, selected shape version. The heavy work
     /// runs off the main actor. Returns a user-facing message: nil on success.

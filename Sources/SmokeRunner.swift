@@ -1,3 +1,4 @@
+import SceneKit
 import AppKit
 import Foundation
 import UniformTypeIdentifiers
@@ -66,6 +67,11 @@ enum SmokeRunner {
             runtime.state.phase == .onboarding || runtime.state.phase == .ready
         }
         log("boot: phase=\(runtime.state.phase)")
+
+        if let flowMesh = env["MODELR_SMOKE_FLOW"], !flowMesh.isEmpty {
+            try runFlowMode(meshPath: flowMesh)
+            return
+        }
 
         if env["MODELR_SMOKE_INPAINT"] == "1" {
             try await runInpaintMode()
@@ -213,6 +219,62 @@ enum SmokeRunner {
         guard bytes > 8 else { throw fail("exported GLB is empty") }
         log("export: \(dest.lastPathComponent) (\(bytes) bytes)")
         capture("06-exported")
+    }
+
+    // MARK: - flow field mode
+
+    /// Computes the cross field of a real .mesh, logs timing and singularities, and renders the mesh
+    /// with the overlay to flow.png from a few angles.
+    private static func runFlowMode(meshPath: String) throws {
+        let url = URL(fileURLWithPath: meshPath)
+        guard let raw = try? Data(contentsOf: url), let mesh = MeshDecimator.parse(raw), !mesh.faces.isEmpty else {
+            throw fail("couldn't read \(meshPath)")
+        }
+        var options = CrossField.Options()
+        var flowFaces = 12_000
+        if let v = env["MODELR_FLOW_FEATURE"].flatMap(Float.init) { options.featureAngle = v }
+        if let v = env["MODELR_FLOW_CURV"].flatMap(Float.init) { options.curvatureWeight = v }
+        if let v = env["MODELR_FLOW_FWEIGHT"].flatMap(Float.init) { options.featureWeight = v }
+        if let v = env["MODELR_FLOW_ITERS"].flatMap(Int.init) { options.iterations = v }
+        if let v = env["MODELR_FLOW_PASSES"].flatMap(Int.init) { options.passes = v }
+        if let v = env["MODELR_FLOW_FACES"].flatMap(Int.init) { flowFaces = v }
+        let t1 = Date()
+        let field = CrossField.computeAdaptive(positions: mesh.positions, faces: mesh.faces, maxFaces: flowFaces, options: options)
+        log(String(format: "field: %d faces (from %d) in %.2fs", field.topology.faces.count, mesh.faces.count,
+                   Date().timeIntervalSince(t1)))
+        let ft = field.topology
+        let closed = ft.vertexFan.filter { !$0.isEmpty }.count
+        let edges = ft.neighbors.reduce(0) { $0 + $1.count } / 2
+        log("topology: V=\(ft.positions.count) E=\(edges) F=\(ft.faces.count) chi=\(ft.positions.count - edges + ft.faces.count) closedFans=\(closed)")
+        let t2 = Date()
+        let singular = field.singularities()
+        log(String(format: "singularities: %d (sum %.2f) in %.2fs", singular.count,
+                   singular.reduce(0) { $0 + $1.index }, Date().timeIntervalSince(t2)))
+        let overlay = FlowOverlay.make(from: field)
+        guard let loaded = MeshViewer.load(.mesh(url)) else { throw fail("couldn't load mesh for rendering") }
+        for (name, angle) in [("front", Float(0)), ("side", Float.pi / 2), ("three-quarter", Float.pi / 4)] {
+            let scene = SCNScene()
+            scene.rootNode.addChildNode(loaded.node.clone())
+            scene.rootNode.addChildNode(overlay.node())
+            let light = SCNNode(); light.light = SCNLight(); light.light?.type = .omni
+            light.position = SCNVector3(2, 3, 4); scene.rootNode.addChildNode(light)
+            let amb = SCNNode(); amb.light = SCNLight(); amb.light?.type = .ambient; amb.light?.intensity = 500
+            scene.rootNode.addChildNode(amb)
+            let cam = SCNNode(); cam.camera = SCNCamera()
+            let r = Float(loaded.radius) * 2.6
+            cam.position = SCNVector3(Float(loaded.center.x) + sin(angle) * r, Float(loaded.center.y) + r * 0.2,
+                                      Float(loaded.center.z) + cos(angle) * r)
+            cam.look(at: loaded.center)
+            scene.rootNode.addChildNode(cam)
+            let renderer = SCNRenderer(device: MTLCreateSystemDefaultDevice(), options: nil)
+            renderer.scene = scene; renderer.pointOfView = cam
+            let image = renderer.snapshot(atTime: 0, with: CGSize(width: 900, height: 900), antialiasingMode: .multisampling4X)
+            if let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+               let png = rep.representation(using: .png, properties: [:]) {
+                try png.write(to: outDir.appendingPathComponent("flow-\(name).png"))
+            }
+        }
+        log("flow: wrote images")
     }
 
     // MARK: - AI Fill mode (real Stable Diffusion weights)

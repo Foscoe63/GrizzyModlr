@@ -304,6 +304,7 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.aiFillSteps) private var aiFillSteps = ToolDefaults.fallbackAIFillSteps
     @AppStorage(ToolDefaults.Key.aiFillStrength) private var aiFillStrength = ToolDefaults.fallbackAIFillStrength
     @AppStorage(ToolDefaults.Key.aiFillGuidance) private var aiFillGuidance = ToolDefaults.fallbackAIFillGuidance
+    @AppStorage(ToolDefaults.Key.flowFeatureAngle) private var flowFeatureAngle = ToolDefaults.fallbackFlowFeatureAngle
     @AppStorage(ToolDefaults.Key.regionTolerance) private var regionTolerance = ToolDefaults.fallbackRegionTolerance
     @AppStorage(ToolDefaults.Key.regionFeather) private var regionFeather = ToolDefaults.fallbackRegionFeather
     @AppStorage(ToolDefaults.Key.tsrThreshold) private var tsrThreshold = ToolDefaults.fallbackTSRThreshold
@@ -396,6 +397,11 @@ struct ToolSettingsView: View {
                 Text("Merges adjacent triangles into quads (best on remeshed models). GLB, STL and PLY stay triangles.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Flow field") {
+                LabeledContent("Crease angle") { slider($flowFeatureAngle, 10...80, step: 5, label: "\(Int(flowFeatureAngle))°") }
+                Text("Edges sharper than this are treated as creases the flow lines follow. Used by the flow field view and flow remesh.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Material regions") {
                 LabeledContent("Color tolerance") { slider($regionTolerance, 0.02...0.5, step: 0.01, label: String(format: "%.0f%%", regionTolerance * 100)) }
                 LabeledContent("Edge softness") { slider($regionFeather, 0.01...0.4, step: 0.01, label: String(format: "%.0f%%", regionFeather * 100)) }
@@ -422,7 +428,7 @@ struct ToolSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(height: 900)
+        .frame(height: 960)
     }
 
     private func slider(_ value: Binding<Double>, _ range: ClosedRange<Double>, step: Double, label: String) -> some View {
@@ -443,6 +449,7 @@ struct ToolSettingsView: View {
         exportQuads = false
         aiFillPrompt = ToolDefaults.fallbackAIFillPrompt; aiFillSteps = ToolDefaults.fallbackAIFillSteps
         aiFillStrength = ToolDefaults.fallbackAIFillStrength; aiFillGuidance = ToolDefaults.fallbackAIFillGuidance
+        flowFeatureAngle = ToolDefaults.fallbackFlowFeatureAngle
         regionTolerance = ToolDefaults.fallbackRegionTolerance; regionFeather = ToolDefaults.fallbackRegionFeather
         tsrThreshold = ToolDefaults.fallbackTSRThreshold; tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
         tsrKeepLargest = true

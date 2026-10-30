@@ -18,6 +18,8 @@ struct MeshTopology {
     private(set) var frameX: [SIMD3<Float>] = []
     private(set) var frameY: [SIMD3<Float>] = []
     private(set) var vertexNormal: [SIMD3<Float>] = []
+    /// Vertex normals smoothed over a few rings: curvature from raw normals is mostly noise on scans.
+    private(set) var curvatureNormal: [SIMD3<Float>] = []
     /// Up to three neighbors per face (fewer on open or non-manifold edges).
     private(set) var neighbors: [[Neighbor]] = []
     /// Faces around each vertex, in counter-clockwise cyclic order, when the fan is a closed manifold loop; else empty.
@@ -50,6 +52,27 @@ struct MeshTopology {
             vertexNormal[i] = l > 1e-20 ? vertexNormal[i] / l : [0, 0, 1]
         }
         buildAdjacency()
+        smoothCurvatureNormals(rounds: 4)
+    }
+
+    private mutating func smoothCurvatureNormals(rounds: Int) {
+        var cur = vertexNormal
+        var ring = [[Int]](repeating: [], count: positions.count)
+        for f in faces {
+            let ids = [Int(f.x), Int(f.y), Int(f.z)]
+            for k in 0..<3 { ring[ids[k]].append(ids[(k + 1) % 3]); ring[ids[k]].append(ids[(k + 2) % 3]) }
+        }
+        for _ in 0..<rounds {
+            var next = cur
+            for v in cur.indices where !ring[v].isEmpty {
+                var sum = cur[v] * 2
+                for w in ring[v] { sum += cur[w] }
+                let l = simd_length(sum)
+                if l > 1e-12 { next[v] = sum / l }
+            }
+            cur = next
+        }
+        curvatureNormal = cur
     }
 
     private mutating func buildAdjacency() {
@@ -119,7 +142,7 @@ struct MeshTopology {
         var ata = simd_float3x3(0), atb = SIMD3<Float>.zero
         for k in 0..<3 {
             let p = positions[ids[k]], q = positions[ids[(k + 1) % 3]]
-            let e = q - p, dn = vertexNormal[ids[(k + 1) % 3]] - vertexNormal[ids[k]]
+            let e = q - p, dn = curvatureNormal[ids[(k + 1) % 3]] - curvatureNormal[ids[k]]
             let ex = simd_dot(e, frameX[i]), ey = simd_dot(e, frameY[i])
             let dx = simd_dot(dn, frameX[i]), dy = simd_dot(dn, frameY[i])
             let r1 = SIMD3<Float>(ex, ey, 0), r2 = SIMD3<Float>(0, ex, ey)

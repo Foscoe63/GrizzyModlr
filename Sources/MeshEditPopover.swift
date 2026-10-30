@@ -6,6 +6,9 @@ struct MeshEditPopover: View {
     @Environment(ProjectStore.self) private var store
     let projectID: Project.ID
     var onSculpt: () -> Void = {}
+    var flowShown = false
+    var flowBusy = false
+    var onToggleFlow: () -> Void = {}
 
     @State private var targetK: Double = ToolDefaults.decimateK()
     @State private var smoothIterations: Double = ToolDefaults.smoothIterations()
@@ -185,6 +188,12 @@ extension MeshEditPopover {
             Slider(value: $remeshRes, in: 48...320, step: 16)
             action("Remesh evenly", "square.grid.3x3") { .remesh(resolution: Int(remeshRes)) }
             action("Quad remesh (aligned)", "square.grid.2x2") { .quadRemesh(resolution: Int(remeshRes)) }
+            Button { onToggleFlow() } label: {
+                Label(flowShown ? "Hide flow field" : (flowBusy ? "Computing flow field…" : "Show flow field"),
+                      systemImage: "wind").frame(maxWidth: .infinity)
+            }
+            .disabled(flowBusy)
+            .help("Draws the direction field that quad rows will follow: cyan lines, red and blue dots where it has singular points")
             HStack(spacing: 6) {
                 Text("LOD").font(.caption)
                 TextField("50, 25, 10", text: $lodText).textFieldStyle(.roundedBorder).controlSize(.small)

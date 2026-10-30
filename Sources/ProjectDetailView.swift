@@ -13,6 +13,8 @@ struct ProjectDetailView: View {
     @State private var showSettings = false
     @State private var showHistory = false
     @State private var showMeshEdit = false
+    @State private var flowOverlay: FlowOverlay?
+    @State private var flowBusy = false
     @State private var sculpt: SculptController?
     @State private var sculptBusy = false
     @State private var texturePaint: TexturePaintController?
@@ -79,6 +81,7 @@ struct ProjectDetailView: View {
             if isEditingMask { editToolbar } else { normalToolbar }
         }
         .focusedSceneValue(\.projectActions, projectActions)
+        .onChange(of: project.currentGeneration?.id) { _, _ in flowOverlay = nil }
     }
 
     /// Show the paint strip while painting, on a paint error, or when viewing a paint
@@ -546,7 +549,8 @@ struct ProjectDetailView: View {
     private var outputPane: some View {
         ZStack {
             if let content = displayedContent {
-                MeshViewer(content: content, onLoading: { objectLoading = $0 }, sculpt: sculpt, command: shapeViewerCommand)
+                MeshViewer(content: content, onLoading: { objectLoading = $0 }, sculpt: sculpt, command: shapeViewerCommand,
+                           overlay: flowOverlay)
             } else if shapeJob.isRunning {
                 PointCloud()                     // animation while loading (no content yet)
                     .frame(width: 150, height: 150)
@@ -628,6 +632,13 @@ struct ProjectDetailView: View {
                             MeshEditPopover(projectID: project.id, onSculpt: {
                                 showMeshEdit = false
                                 Task { sculpt = await store.beginSculpt(for: project.id) }
+                            }, flowShown: flowOverlay != nil, flowBusy: flowBusy, onToggleFlow: {
+                                if flowOverlay != nil { flowOverlay = nil; return }
+                                flowBusy = true
+                                Task {
+                                    flowOverlay = await store.flowOverlay(for: project.id)
+                                    flowBusy = false
+                                }
                             }).environment(store)
                         }
                     }

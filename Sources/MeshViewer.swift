@@ -22,6 +22,8 @@ struct MeshViewer: NSViewRepresentable {
     var paint: TexturePaintController? = nil
     /// One-shot camera / snapshot request from the viewport menu.
     var command: ViewerCommand? = nil
+    /// Optional cross-field drawing shown over the mesh.
+    var overlay: FlowOverlay? = nil
 
     @AppStorage(ViewerDefaults.Key.environment) private var envName = ViewerDefaults.fallbackEnvironment
     @AppStorage(ViewerDefaults.Key.environmentIntensity) private var envIntensity = ViewerDefaults.fallbackIntensity
@@ -43,6 +45,7 @@ struct MeshViewer: NSViewRepresentable {
         var lastFitCenter: SCNVector3?
         var lastFitRadius: CGFloat?
         var lastCommand: UUID?
+        var lastOverlay: UUID?
     }
 
     func makeNSView(context: Context) -> SculptSCNView {
@@ -84,6 +87,11 @@ struct MeshViewer: NSViewRepresentable {
 
     func updateNSView(_ view: SculptSCNView, context: Context) {
         ViewerStage.apply(view, options: stageOptions, allowSpin: sculpt == nil && paint == nil)
+        if context.coordinator.lastOverlay != overlay?.id {
+            context.coordinator.lastOverlay = overlay?.id
+            view.scene?.rootNode.childNode(withName: "FlowOverlay", recursively: false)?.removeFromParentNode()
+            if let overlay { view.scene?.rootNode.addChildNode(overlay.node()) }
+        }
         if let command, context.coordinator.lastCommand != command.id {
             context.coordinator.lastCommand = command.id
             run(command, in: view)
