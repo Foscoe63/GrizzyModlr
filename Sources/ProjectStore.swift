@@ -346,6 +346,26 @@ final class ProjectStore {
         save()
     }
 
+    /// Appends a brush stroke; long strokes are thinned to at most 80 points.
+    func addWeightStroke(_ stroke: WeightStroke, for id: Project.ID) {
+        guard var cfg = project(id)?.rigConfig else { return }
+        var s = stroke
+        s.points = Self.thin(stroke.points, maxCount: 80)
+        cfg.strokes.append(s)
+        setRigConfig(cfg, for: id)
+    }
+
+    func undoWeightStroke(for id: Project.ID) {
+        guard var cfg = project(id)?.rigConfig, !cfg.strokes.isEmpty else { return }
+        cfg.strokes.removeLast()
+        setRigConfig(cfg, for: id)
+    }
+
+    static func thin(_ pts: [[Float]], maxCount: Int) -> [[Float]] {
+        guard pts.count > maxCount, maxCount > 1 else { return pts }
+        return (0..<maxCount).map { pts[$0 * (pts.count - 1) / (maxCount - 1)] }
+    }
+
     /// The fitted skeleton as line segments (mesh coordinates) for the viewer, or nil when the
     /// shape isn't a standing figure.
     func rigPreview(for id: Project.ID) async -> [FlowGuide]? {

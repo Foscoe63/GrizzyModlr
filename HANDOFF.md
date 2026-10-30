@@ -113,5 +113,7 @@ The bust (head + torso, h/width ≈ 1.5) is not a figure: the fitted skeleton pu
 - `ProjectTemplate` (built-ins + custom saved via sidebar menu; Settings picks the default): sets quality, paint quality, background removal at `newProject(template:)`.
 - `RigConfig` (per project, saved in `Project.rigConfigRaw`): joint offsets, per-joint reach, weight smoothing; "Adjust rig" in the Pose section shows the skeleton in the viewer (drawn through the guide-line layer, so it's yellow). Applied to Bake pose and rigged GLB export.
 - `JointNaming` (Settings → Rigging): generic / Mixamo / Unity names in the rigged GLB. Our skeleton has no clavicles or fingers.
-- **Not real weight painting** — numeric reach + smoothing only; no brush. **FBX animation** not implemented; plugin recipe in docs/PLUGINS.md (Blender, untested).
+- Weight painting: brush strokes (`WeightStroke`, Settings → Rigging for default size/power) ride the guide-drawing recorder; replayed over computed weights in `SkinWeights.paint`. **The brush UI has never been exercised in the live app** (needs a standing figure; the bust is rejected). Painted-weights display is only the stroke lines, not a heat map. **FBX animation** not implemented; plugin recipe in docs/PLUGINS.md (Blender, untested).
 - Still unvalidated on a real full-body character.
+
+GLB checks: `testRiggedGLBInvariants` verifies spec-level structure (accessor ranges, joint indices, weights sum, acyclic nodes, animation counts). ModelIO on this macOS can't import GLB, so there is no outside importer check; run Khronos `gltf-validator` or Blender on a rigged export when available.

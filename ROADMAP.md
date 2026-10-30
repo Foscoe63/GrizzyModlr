@@ -100,7 +100,7 @@ Comprehensive plan to evolve from image→3D to a full local 3D creation studio.
 #### 3.1 Rigging & Animation
 - 🟡 **Auto-rigging** — geometric 22-joint humanoid fit (not AI; upright front-facing figures only)
 - 🟡 **Pose library** — 6 poses, 3 clips (Walk, Wave, Arms up)
-- 🟡 **Weight painting** — numeric per-joint reach + smoothing (no brush)
+- ✅ **Weight painting** — brush strokes on the model (add/remove per joint) plus per-joint reach and smoothing; strokes are stored in mesh coordinates
 - 🟡 **Animation export** — GLB with skin + clip (FBX animation not done)
 
 #### 3.2 Extended Export

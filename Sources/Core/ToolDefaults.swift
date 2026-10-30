@@ -38,6 +38,8 @@ enum ToolDefaults {
         static let defaultTemplate = "tools.defaultTemplate"
         static let rigClipSpeed = "tools.rigClipSpeed"
         static let rigNaming = "tools.rigNaming"
+        static let weightBrushRadius = "tools.weightBrushRadius"
+        static let weightBrushStrength = "tools.weightBrushStrength"
         static let tsrThreshold = "tools.tsrThreshold"
         static let tsrForegroundRatio = "tools.tsrForegroundRatio"
         static let tsrKeepLargest = "tools.tsrKeepLargest"
@@ -77,6 +79,8 @@ enum ToolDefaults {
     static let fallbackSlicer = "auto"
     static let fallbackRigClip = "Walk"
     static let fallbackRigNaming = "generic"
+    static let fallbackWeightBrushRadius = 0.08
+    static let fallbackWeightBrushStrength = 0.6
     static let fallbackRigClipSpeed = 1.0
     static let fallbackTSRThreshold = 25.0
     static let fallbackTSRForegroundRatio = 0.85
@@ -123,6 +127,8 @@ enum ToolDefaults {
     static func slicer(_ d: UserDefaults = .standard) -> String { d.string(forKey: Key.slicer) ?? fallbackSlicer }
     static func batchPaint(_ d: UserDefaults = .standard) -> Bool { d.bool(forKey: Key.batchPaint) }
     static func rigClip(_ d: UserDefaults = .standard) -> String { d.string(forKey: Key.rigClip) ?? fallbackRigClip }
+    static func weightBrushRadius(_ d: UserDefaults = .standard) -> Double { double(Key.weightBrushRadius, fallbackWeightBrushRadius, d) }
+    static func weightBrushStrength(_ d: UserDefaults = .standard) -> Double { double(Key.weightBrushStrength, fallbackWeightBrushStrength, d) }
     static func rigNaming(_ d: UserDefaults = .standard) -> String { d.string(forKey: Key.rigNaming) ?? fallbackRigNaming }
     static func rigClipSpeed(_ d: UserDefaults = .standard) -> Double { double(Key.rigClipSpeed, fallbackRigClipSpeed, d) }
     static func exportQuads(_ d: UserDefaults = .standard) -> Bool { d.bool(forKey: Key.exportQuads) }

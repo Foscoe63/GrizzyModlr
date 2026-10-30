@@ -38,7 +38,7 @@ enum RigGLB {
         let positions = (0..<mesh.vertCount).map { SIMD3(mesh.verts[$0 * 3], mesh.verts[$0 * 3 + 1], mesh.verts[$0 * 3 + 2]) }
         guard let skeleton = Skeleton.fit(to: positions, rig: rig) else { throw RigError.noSkeleton }
         let faces = (0..<mesh.faceCount).map { SIMD3(mesh.indices[$0 * 3], mesh.indices[$0 * 3 + 1], mesh.indices[$0 * 3 + 2]) }
-        let weights = SkinWeights.compute(positions: positions, skeleton: skeleton, faces: faces, smoothing: rig.smoothing)
+        let weights = SkinWeights.compute(positions: positions, skeleton: skeleton, faces: faces, smoothing: rig.smoothing, strokes: rig.strokes)
         return try addRig(to: MeshExporter.encodeGLB(mesh), skeleton: skeleton, weights: weights, clip: clip,
                           speed: speed, naming: naming)
     }

@@ -317,6 +317,8 @@ struct ToolSettingsView: View {
     @State private var customTemplates = ProjectTemplate.custom()
     @AppStorage(ToolDefaults.Key.rigClip) private var rigClip = ToolDefaults.fallbackRigClip
     @AppStorage(ToolDefaults.Key.rigNaming) private var rigNaming = ToolDefaults.fallbackRigNaming
+    @AppStorage(ToolDefaults.Key.weightBrushRadius) private var weightBrushRadius = ToolDefaults.fallbackWeightBrushRadius
+    @AppStorage(ToolDefaults.Key.weightBrushStrength) private var weightBrushStrength = ToolDefaults.fallbackWeightBrushStrength
     @AppStorage(ToolDefaults.Key.rigClipSpeed) private var rigClipSpeed = ToolDefaults.fallbackRigClipSpeed
     @AppStorage(ToolDefaults.Key.tsrThreshold) private var tsrThreshold = ToolDefaults.fallbackTSRThreshold
     @AppStorage(ToolDefaults.Key.tsrForegroundRatio) private var tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
@@ -448,6 +450,8 @@ struct ToolSettingsView: View {
                 Picker("Joint names", selection: $rigNaming) {
                     ForEach(JointNaming.allCases) { Text($0.label).tag($0.rawValue) }
                 }
+                LabeledContent("Weight brush size") { slider($weightBrushRadius, 0.02...0.25, step: 0.01, label: String(format: "%.0f%% of height", weightBrushRadius * 100)) }
+                LabeledContent("Weight brush power") { slider($weightBrushStrength, 0.1...1, step: 0.05, label: String(format: "%.0f%%", weightBrushStrength * 100)) }
                 LabeledContent("Clip speed") { slider($rigClipSpeed, 0.25...3, step: 0.25, label: String(format: "×%.2f", rigClipSpeed)) }
                 Text("The rigged GLB export fits a standard humanoid skeleton (works on upright, front-facing figures with arms out or hanging) and embeds this clip. Joint names let Mixamo or Unity animation retarget onto the export by name. Poses can also be baked into the mesh from the mesh-edit popover.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -520,6 +524,7 @@ struct ToolSettingsView: View {
         batchPaint = false
         defaultTemplate = "none"
         rigClip = ToolDefaults.fallbackRigClip; rigClipSpeed = ToolDefaults.fallbackRigClipSpeed; rigNaming = ToolDefaults.fallbackRigNaming
+        weightBrushRadius = ToolDefaults.fallbackWeightBrushRadius; weightBrushStrength = ToolDefaults.fallbackWeightBrushStrength
         tsrThreshold = ToolDefaults.fallbackTSRThreshold; tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
         tsrKeepLargest = true
         reliefDepth = ToolDefaults.fallbackReliefDepth; reliefResolution = ToolDefaults.fallbackReliefResolution

@@ -1,6 +1,18 @@
 import Foundation
 import simd
 
+/// One brush stroke of weight painting, in mesh coordinates so it survives remeshing.
+struct WeightStroke: Codable, Hashable {
+    var joint: String
+    /// true: pull vertices toward this joint; false: take influence away from it.
+    var add: Bool
+    /// Brush radius as a fraction of model height.
+    var radius: Float
+    /// 0…1 effect at the stroke's centre line.
+    var strength: Float
+    var points: [[Float]]
+}
+
 /// Per-project hand adjustments to the fitted rig.
 struct RigConfig: Codable, Hashable {
     /// Joint name → [x, y, z] offset as a fraction of model height.
@@ -9,8 +21,10 @@ struct RigConfig: Codable, Hashable {
     var influence: [String: Float] = [:]
     /// Passes that average each vertex's weights with its neighbours' (softer joints).
     var smoothing = 0
+    /// Brush strokes, replayed in order over the computed weights.
+    var strokes: [WeightStroke] = []
 
-    var isDefault: Bool { offsets.isEmpty && influence.isEmpty && smoothing == 0 }
+    var isDefault: Bool { offsets.isEmpty && influence.isEmpty && smoothing == 0 && strokes.isEmpty }
     func offset(_ joint: String) -> SIMD3<Float> {
         guard let o = offsets[joint], o.count == 3 else { return .zero }
         return SIMD3(o[0], o[1], o[2])
@@ -154,7 +168,8 @@ struct SkinWeights: Equatable {
     var weights: [SIMD4<Float>]
 
     static func compute(positions: [SIMD3<Float>], skeleton: Skeleton,
-                        faces: [SIMD3<UInt32>] = [], smoothing: Int = 0) -> SkinWeights {
+                        faces: [SIMD3<UInt32>] = [], smoothing: Int = 0,
+                        strokes: [WeightStroke] = []) -> SkinWeights {
         // Bone segments: joint j owns segments to each of its children.
         var segments: [(joint: Int, a: SIMD3<Float>, b: SIMD3<Float>, radius: Float)] = []
         for j in skeleton.joints.indices {
@@ -182,7 +197,50 @@ struct SkinWeights: Equatable {
         }
         var result = SkinWeights(joints: js, weights: ws)
         if smoothing > 0, !faces.isEmpty { result.smooth(faces: faces, passes: smoothing) }
+        if !strokes.isEmpty { result.paint(strokes, positions: positions, skeleton: skeleton) }
         return result
+    }
+
+    /// Replays brush strokes: each vertex within a stroke's radius is pulled toward (or pushed away
+    /// from) the stroke's joint, strongest on the stroke line, then renormalized.
+    mutating func paint(_ strokes: [WeightStroke], positions: [SIMD3<Float>], skeleton: Skeleton) {
+        guard !positions.isEmpty else { return }
+        let ys = positions.map(\.y)
+        let height = (ys.max() ?? 0) - (ys.min() ?? 0)
+        for stroke in strokes {
+            guard let target = skeleton.index(of: stroke.joint) else { continue }
+            let pts = stroke.points.compactMap { $0.count == 3 ? SIMD3($0[0], $0[1], $0[2]) : nil }
+            let radius = max(stroke.radius * height, 1e-6)
+            guard !pts.isEmpty else { continue }
+            for v in positions.indices {
+                var d2 = Float.infinity
+                for p in pts { d2 = min(d2, simd_distance_squared(positions[v], p)) }
+                let q = d2.squareRoot() / radius
+                guard q < 1 else { continue }
+                let falloff = (1 - q * q) * (1 - q * q)
+                let t = max(0, min(1, stroke.strength * falloff))
+                var acc = [UInt16: Float]()
+                for k in 0..<4 where weights[v][k] > 0 { acc[joints[v][k]] = weights[v][k] }
+                let j = UInt16(target)
+                if stroke.add {
+                    for key in acc.keys { acc[key]! *= (1 - t) }
+                    acc[j, default: 0] += t
+                } else if let w = acc[j] {
+                    acc[j] = w * (1 - t)
+                }
+                var top = acc.sorted { $0.value > $1.value }.prefix(4).filter { $0.value > 1e-6 }
+                if top.isEmpty {
+                    // Everything was removed: hand the vertex to the removed joint's parent (or first child).
+                    let fallback = skeleton.joints[target].parent >= 0 ? skeleton.joints[target].parent
+                        : (skeleton.primaryChild(of: target) ?? target)
+                    top = [(key: UInt16(fallback), value: 1)]
+                }
+                let sum = top.reduce(Float(0)) { $0 + $1.value }
+                var jv = SIMD4<UInt16>(repeating: 0), wv = SIMD4<Float>(repeating: 0)
+                for (k, e) in top.enumerated() { jv[k] = e.key; wv[k] = e.value / sum }
+                joints[v] = jv; weights[v] = wv
+            }
+        }
     }
 
     /// Averages each vertex's weights with its neighbours' (keeps the strongest four).

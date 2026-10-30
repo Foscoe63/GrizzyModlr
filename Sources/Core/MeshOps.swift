@@ -287,7 +287,7 @@ enum MeshOps {
             guard let pose = PoseLibrary.named(name), let skeleton = Skeleton.fit(to: positions, rig: rig) else {
                 return Result(positions: positions, faces: faces, note: "couldn't fit a skeleton to this mesh", changed: false)
             }
-            let weights = SkinWeights.compute(positions: positions, skeleton: skeleton, faces: faces, smoothing: rig.smoothing)
+            let weights = SkinWeights.compute(positions: positions, skeleton: skeleton, faces: faces, smoothing: rig.smoothing, strokes: rig.strokes)
             let height = (positions.map(\.y).max() ?? 0) - (positions.map(\.y).min() ?? 0)
             let posed = pose.apply(to: positions, skeleton: skeleton, weights: weights, height: height)
             guard posed.allSatisfy({ $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }) else {

@@ -69,6 +69,39 @@ final class RigTests: XCTestCase {
         XCTAssertLessThan(avgMax(soft), avgMax(hard))
     }
 
+    func testWeightStrokesPullAndRemoveInfluenceLocally() throws {
+        let f = figure()
+        let sk = try XCTUnwrap(Skeleton.fit(to: f.positions))
+        let base = SkinWeights.compute(positions: f.positions, skeleton: sk)
+        let chest = UInt16(sk.index(of: "chest")!)
+        func weight(_ w: SkinWeights, _ v: Int, _ j: UInt16) -> Float {
+            (0..<4).reduce(0) { $0 + (w.joints[v][$1] == j ? w.weights[v][$1] : 0) }
+        }
+        // A stroke on the far left-arm tip pulling toward the chest.
+        let tip = f.positions.indices.max { f.positions[$0].x < f.positions[$1].x }!
+        let p = f.positions[tip]
+        let add = WeightStroke(joint: "chest", add: true, radius: 0.08, strength: 1, points: [[p.x, p.y, p.z]])
+        let painted = SkinWeights.compute(positions: f.positions, skeleton: sk, strokes: [add])
+        XCTAssertGreaterThan(weight(painted, tip, chest), weight(base, tip, chest) + 0.5)
+        for v in painted.weights { XCTAssertEqual(v.x + v.y + v.z + v.w, 1, accuracy: 1e-4) }
+        // Far-away vertices (a foot) are untouched.
+        let foot = f.positions.indices.min { f.positions[$0].y < f.positions[$1].y }!
+        XCTAssertEqual(painted.weights[foot], base.weights[foot])
+        XCTAssertEqual(painted.joints[foot], base.joints[foot])
+        // Removing the chest again drops it.
+        let remove = WeightStroke(joint: "chest", add: false, radius: 0.08, strength: 1, points: [[p.x, p.y, p.z]])
+        let undone = SkinWeights.compute(positions: f.positions, skeleton: sk, strokes: [add, remove])
+        XCTAssertLessThan(weight(undone, tip, chest), 0.05)
+        // Strokes persist with the config and make it non-default.
+        var cfg = RigConfig(); cfg.strokes = [add]
+        XCTAssertFalse(cfg.isDefault)
+        XCTAssertEqual(try JSONDecoder().decode(RigConfig.self, from: JSONEncoder().encode(cfg)).strokes, [add])
+        // Painting changes a baked pose.
+        let a = MeshOps.apply(.pose(name: "Arms down"), positions: f.positions, faces: f.faces)
+        let b = MeshOps.apply(.pose(name: "Arms down", rig: cfg), positions: f.positions, faces: f.faces)
+        XCTAssertNotEqual(a.positions[tip], b.positions[tip])
+    }
+
     func testJointNamingConventions() {
         XCTAssertEqual(JointNaming.generic.name("shoulderL"), "shoulderL")
         XCTAssertEqual(JointNaming.mixamo.name("shoulderL"), "mixamorig:LeftArm")
@@ -197,5 +230,77 @@ final class RigTests: XCTestCase {
             try svg(posed, "rig-\(name.replacingOccurrences(of: " ", with: "-")).svg")
         }
         print("RIG wrote to", out.path)
+    }
+
+    /// Spec-level checks on a rigged GLB (what glTF validators flag first): accessor ranges inside
+    /// their views, joint indices in range, weights summing to 1, acyclic node tree, matching animation counts.
+    func testRiggedGLBInvariants() throws {
+        let f = figure()
+        var d = Data()
+        func le<T>(_ v: T) { var x = v; withUnsafeBytes(of: &x) { d.append(contentsOf: $0) } }
+        le(Int32(f.positions.count)); le(Int32(f.faces.count))
+        f.positions.forEach { le($0.x); le($0.y); le($0.z) }
+        f.positions.forEach { _ in le(Float(0)); le(Float(1)); le(Float(0)) }
+        f.faces.forEach { le($0.x); le($0.y); le($0.z) }
+        let src = FileManager.default.temporaryDirectory.appendingPathComponent("v-\(UUID().uuidString).mesh")
+        let dest = src.deletingPathExtension().appendingPathExtension("glb")
+        try d.write(to: src)
+        defer { try? FileManager.default.removeItem(at: src); try? FileManager.default.removeItem(at: dest) }
+        try MeshExporter.export(meshURL: src, texture: nil, format: .glbRigged, to: dest)
+
+        let glb = try Data(contentsOf: dest)
+        func u32(_ o: Int) -> Int { Int(glb.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: o, as: UInt32.self) }) }
+        XCTAssertEqual(u32(8), glb.count)                                   // header length matches
+        let jl = u32(12)
+        XCTAssertEqual(u32(16), 0x4E4F_534A)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: glb.subdata(in: 20 ..< 20 + jl)) as? [String: Any])
+        let binLen = u32(20 + jl), binStart = 20 + jl + 8
+        XCTAssertEqual(u32(20 + jl + 4), 0x004E_4942)
+        XCTAssertEqual(binStart + binLen, glb.count)
+        let bin = glb.subdata(in: binStart ..< binStart + binLen)
+
+        let views = try XCTUnwrap(json["bufferViews"] as? [[String: Any]])
+        let accessors = try XCTUnwrap(json["accessors"] as? [[String: Any]])
+        let sizes = [5126: 4, 5123: 2, 5125: 4], comps = ["SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT4": 16]
+        for (i, a) in accessors.enumerated() {
+            let v = views[a["bufferView"] as! Int]
+            let need = (a["count"] as! Int) * comps[a["type"] as! String]! * sizes[a["componentType"] as! Int]!
+            XCTAssertLessThanOrEqual(need, v["byteLength"] as! Int, "accessor \(i) larger than its view")
+            XCTAssertEqual((v["byteOffset"] as? Int ?? 0) % 4, 0, "view \(i) misaligned")
+        }
+        let skin = try XCTUnwrap((json["skins"] as? [[String: Any]])?.first)
+        let joints = try XCTUnwrap(skin["joints"] as? [Int])
+        let nodes = try XCTUnwrap(json["nodes"] as? [[String: Any]])
+        XCTAssertTrue(joints.allSatisfy { $0 < nodes.count })
+        XCTAssertEqual(accessors[skin["inverseBindMatrices"] as! Int]["count"] as? Int, joints.count)
+        // Node tree: every node has at most one parent and there are no cycles.
+        var parent = [Int: Int]()
+        for (i, n) in nodes.enumerated() { for c in (n["children"] as? [Int]) ?? [] {
+            XCTAssertNil(parent[c], "node \(c) has two parents"); parent[c] = i } }
+        for start in nodes.indices { var cur = start, steps = 0
+            while let p = parent[cur] { cur = p; steps += 1; XCTAssertLessThanOrEqual(steps, nodes.count, "cycle") } }
+        // Joint indices < joint count; weights sum to 1.
+        let prim = try XCTUnwrap(((json["meshes"] as? [[String: Any]])?.first?["primitives"] as? [[String: Any]])?.first)
+        let attrs = try XCTUnwrap(prim["attributes"] as? [String: Int])
+        let ja = accessors[attrs["JOINTS_0"]!], jv = views[ja["bufferView"] as! Int]
+        let wa = accessors[attrs["WEIGHTS_0"]!], wv = views[wa["bufferView"] as! Int]
+        for vtx in 0..<(ja["count"] as! Int) {
+            var sum: Float = 0
+            for k in 0..<4 {
+                let j = bin.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: (jv["byteOffset"] as! Int) + (vtx * 4 + k) * 2, as: UInt16.self) }
+                let w = bin.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: (wv["byteOffset"] as! Int) + (vtx * 4 + k) * 4, as: Float.self) }
+                XCTAssertLessThan(Int(j), joints.count)
+                sum += w
+            }
+            XCTAssertEqual(sum, 1, accuracy: 1e-3)
+        }
+        // Animation: sampler input/outputs share the key count; channels target joint nodes.
+        let anim = try XCTUnwrap((json["animations"] as? [[String: Any]])?.first)
+        for s in try XCTUnwrap(anim["samplers"] as? [[String: Any]]) {
+            XCTAssertEqual(accessors[s["input"] as! Int]["count"] as? Int, accessors[s["output"] as! Int]["count"] as? Int)
+        }
+        for c in try XCTUnwrap(anim["channels"] as? [[String: Any]]) {
+            XCTAssertTrue(joints.contains((c["target"] as! [String: Any])["node"] as! Int))
+        }
     }
 }

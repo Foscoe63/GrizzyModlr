@@ -18,6 +18,7 @@ struct ProjectDetailView: View {
     @State private var flowBusy = false
     @State private var flowGuides: [FlowGuide] = []
     @State private var drawingGuides = false
+    @State private var paintingWeights: WeightBrush?
     @State private var guideRecorder = GuideRecorder()
     @State private var sculpt: SculptController?
     @State private var sculptBusy = false
@@ -86,7 +87,8 @@ struct ProjectDetailView: View {
         }
         .focusedSceneValue(\.projectActions, projectActions)
         .onChange(of: project.currentGeneration?.id) { _, _ in flowOverlay = nil; rigOverlay = [] }
-        .onChange(of: showMeshEdit) { _, shown in if !shown { rigOverlay = [] } }
+        .onChange(of: showMeshEdit) { _, shown in if !shown && paintingWeights == nil { rigOverlay = [] } }
+        .onChange(of: paintingWeights == nil) { _, done in if done { rigOverlay = [] } }
         .onAppear { flowGuides = project.flowGuides }
         .onChange(of: project.id) { _, _ in flowGuides = project.flowGuides; drawingGuides = false }
         .onChange(of: flowGuides) { _, guides in store.setFlowGuides(guides, for: project.id) }
@@ -581,7 +583,7 @@ struct ProjectDetailView: View {
         ZStack {
             if let content = displayedContent {
                 MeshViewer(content: content, onLoading: { objectLoading = $0 }, sculpt: sculpt, command: shapeViewerCommand,
-                           overlay: flowOverlay, guides: flowGuides + rigOverlay, guideRecorder: drawingGuides ? guideRecorder : nil)
+                           overlay: flowOverlay, guides: flowGuides + rigOverlay, guideRecorder: (drawingGuides || paintingWeights != nil) ? guideRecorder : nil)
             } else if shapeJob.isRunning {
                 PointCloud()                     // animation while loading (no content yet)
                     .frame(width: 150, height: 150)
@@ -596,6 +598,22 @@ struct ProjectDetailView: View {
             }
             exportOverlay(meshURL: shapeJob.isRunning ? nil : store.shapeMeshURL(for: project),
                           texture: nil, editable: !shapeJob.isRunning && sculpt == nil)
+            if let brush = paintingWeights {
+                VStack {
+                    HStack(spacing: 10) {
+                        Image(systemName: "paintbrush.pointed")
+                        Text("Painting \(brush.joint) weights (\(brush.add ? "add" : "remove")) · drag on the model · hold ⌥ to orbit").font(.caption)
+                        if !project.rigConfig.strokes.isEmpty {
+                            Button("Undo") { store.undoWeightStroke(for: project.id); refreshRigOverlay() }.controlSize(.small)
+                        }
+                        Button("Done") { paintingWeights = nil }.controlSize(.small).buttonStyle(.borderedProminent)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    Spacer()
+                }
+                .padding(12)
+            }
             if drawingGuides {
                 VStack {
                     HStack(spacing: 10) {
@@ -652,6 +670,17 @@ struct ProjectDetailView: View {
         }
     }
 
+    /// Redraws the skeleton plus painted strokes after a rig change.
+    private func refreshRigOverlay() {
+        Task {
+            let bones = await store.rigPreview(for: project.id) ?? []
+            let strokes = project.rigConfig.strokes.map { s in
+                FlowGuide(points: s.points.compactMap { $0.count == 3 ? SIMD3($0[0], $0[1], $0[2]) : nil })
+            }
+            rigOverlay = bones + strokes
+        }
+    }
+
     // MARK: - Export
 
     /// A floating export menu in the top-right of a viewport. Renders only when there's
@@ -694,7 +723,18 @@ struct ProjectDetailView: View {
                             }, onClearGuides: {
                                 flowGuides = []
                                 flowOverlay = nil
-                            }, onRigOverlay: { rigOverlay = $0 }).environment(store)
+                            }, onRigOverlay: { rigOverlay = $0 }, onPaintWeights: { brush in
+                                showMeshEdit = false
+                                flowOverlay = nil
+                                drawingGuides = false
+                                guideRecorder.onStroke = { points in
+                                    store.addWeightStroke(WeightStroke(joint: brush.joint, add: brush.add, radius: brush.radius,
+                                                                       strength: brush.strength,
+                                                                       points: points.map { [$0.x, $0.y, $0.z] }), for: project.id)
+                                    refreshRigOverlay()
+                                }
+                                paintingWeights = brush
+                            }).environment(store)
                         }
                     }
                     Menu {

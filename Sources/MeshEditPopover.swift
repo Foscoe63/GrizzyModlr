@@ -1,5 +1,13 @@
 import SwiftUI
 
+/// Settings for one weight-painting session.
+struct WeightBrush: Equatable {
+    var joint: String
+    var add: Bool
+    var radius: Float
+    var strength: Float
+}
+
 /// Post-generation mesh tools. Each action saves a new shape version, so the
 /// original is never overwritten and every edit can be undone from history.
 struct MeshEditPopover: View {
@@ -13,6 +21,7 @@ struct MeshEditPopover: View {
     var onDrawGuides: () -> Void = {}
     var onClearGuides: () -> Void = {}
     var onRigOverlay: ([FlowGuide]) -> Void = { _ in }
+    var onPaintWeights: (WeightBrush) -> Void = { _ in }
 
     @State private var targetK: Double = ToolDefaults.decimateK()
     @State private var smoothIterations: Double = ToolDefaults.smoothIterations()
@@ -25,6 +34,9 @@ struct MeshEditPopover: View {
     @State private var poseName = PoseLibrary.all[1].name
     @State private var rigJoint = "wristL"
     @State private var rigNote: String?
+    @State private var brushAdd = true
+    @State private var brushRadius = ToolDefaults.weightBrushRadius()
+    @State private var brushStrength = ToolDefaults.weightBrushStrength()
     @State private var booleanOp: BooleanOp = .subtract
     @State private var operandChoice = "sphere"          // a BooleanPrimitive raw value or a version UUID
     @State private var operandSize: Double = 0.5
@@ -222,10 +234,21 @@ extension MeshEditPopover {
                     Stepper("\(rigConfig.smoothing)", value: Binding(get: { rigConfig.smoothing }, set: { v in
                         editRig { $0.smoothing = v } }), in: 0...6).font(.caption)
                 }
+                Picker("Brush", selection: $brushAdd) { Text("Add").tag(true); Text("Remove").tag(false) }
+                    .pickerStyle(.segmented).labelsHidden()
+                miniSlider("Size", $brushRadius, 0.02...0.25)
+                miniSlider("Power", $brushStrength, 0.1...1)
+                Button {
+                    onPaintWeights(WeightBrush(joint: rigJoint, add: brushAdd, radius: Float(brushRadius), strength: Float(brushStrength)))
+                } label: { Label("Paint \(rigJoint) weights on the model", systemImage: "paintbrush.pointed") }
+                    .controlSize(.small)
+                if !rigConfig.strokes.isEmpty {
+                    Text("\(rigConfig.strokes.count) brush stroke\(rigConfig.strokes.count == 1 ? "" : "s")").font(.caption2).foregroundStyle(.secondary)
+                }
                 Button("Reset rig adjustments") { editRig { $0 = RigConfig() } }
                     .controlSize(.small).disabled(rigConfig.isDefault)
                 if let rigNote { Text(rigNote).font(.caption2).foregroundStyle(.orange) }
-                Text("Offsets move a joint (fraction of height). Reach scales how far its bones pull the surface. Smooth weights softens joints. This is numeric tuning, not brush weight painting.")
+                Text("Offsets move a joint (fraction of height). Reach scales how far its bones pull the surface. Smooth weights softens joints. Brush strokes pull the surface toward (or away from) the chosen joint; they follow the model, not vertex numbers.")
                     .font(.caption2).foregroundStyle(.tertiary)
             }
         }
