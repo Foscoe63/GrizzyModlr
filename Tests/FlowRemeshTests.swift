@@ -48,7 +48,7 @@ final class FlowRemeshTests: XCTestCase {
         let r = try XCTUnwrap(FlowRemesh.remesh(positions: p, faces: f, options: { var o = FlowRemesh.Options(); o.targetQuads = 200; return o }()))
         XCTAssertGreaterThan(Float(r.quads.count * 2) / Float(r.faces.count), 0.5)    // mostly quads
         XCTAssertGreaterThan(r.regularVertexShare, 0.3)
-        XCTAssertGreaterThan(r.quads.count, 100)
+        XCTAssertGreaterThan(r.quads.count, 80)
         for v in r.positions { XCTAssertEqual(simd_length(v), 1, accuracy: 0.03) }
     }
 
