@@ -188,6 +188,10 @@ extension MeshEditPopover {
             Slider(value: $remeshRes, in: 48...320, step: 16)
             action("Remesh evenly", "square.grid.3x3") { .remesh(resolution: Int(remeshRes)) }
             action("Quad remesh (aligned)", "square.grid.2x2") { .quadRemesh(resolution: Int(remeshRes)) }
+            action("Flow remesh (experimental)", "wind") {
+                .flowRemesh(targetQuads: Int(ToolDefaults.flowTargetQuads()), featureAngle: Float(ToolDefaults.flowFeatureAngle()),
+                            fallbackResolution: Int(remeshRes))
+            }
             Button { onToggleFlow() } label: {
                 Label(flowShown ? "Hide flow field" : (flowBusy ? "Computing flow field…" : "Show flow field"),
                       systemImage: "wind").frame(maxWidth: .infinity)

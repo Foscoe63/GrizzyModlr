@@ -13,6 +13,7 @@ enum MeshEdit: Equatable {
     case remesh(resolution: Int)
     /// Remesh in the model's own axis frame with sharp edges kept, giving quad rows along its flats.
     case quadRemesh(resolution: Int)
+    case flowRemesh(targetQuads: Int, featureAngle: Float, fallbackResolution: Int)
 
     var label: String {
         switch self {
@@ -22,6 +23,7 @@ enum MeshEdit: Equatable {
         case .symmetrize(let axis, let positive): return "mirrored \(positive ? "+" : "−")\(axis.rawValue.uppercased()) half"
         case .remesh(let n): return "remeshed at \(n)"
         case .quadRemesh(let n): return "quad remeshed at \(n)"
+        case .flowRemesh(let q, _, _): return "flow remeshed to ~\(q) quads"
         }
     }
 }
@@ -266,6 +268,18 @@ enum MeshOps {
             let share = r.faces.isEmpty ? 0 : Int((Float(pairs.quads.count * 2) / Float(r.faces.count) * 100).rounded())
             return Result(positions: r.positions, faces: r.faces,
                           note: "\(faces.count) → \(r.faces.count) triangles, \(share)% pair into quads", changed: true)
+        case .flowRemesh(let target, let angle, let fallback):
+            var o = FlowRemesh.Options()
+            o.targetQuads = target; o.featureAngle = angle
+            if let r = FlowRemesh.remesh(positions: positions, faces: faces, options: o) {
+                let pct = Int((Float(r.quads.count * 2) / Float(max(r.faces.count, 1)) * 100).rounded())
+                return Result(positions: r.positions, faces: r.faces,
+                              note: "flow remesh: \(r.quads.count) quads, \(pct)% of faces", changed: true)
+            }
+            // The flow could not be turned into a closed surface; keep the user's result useful.
+            let q = apply(.quadRemesh(resolution: fallback), positions: positions, faces: faces)
+            return Result(positions: q.positions, faces: q.faces,
+                          note: "flow remesh didn't close; used the aligned remesh instead (\(q.note))", changed: q.changed)
         case .fillHoles(let maxEdges):
             let r = fillHoles(positions: positions, faces: faces, maxEdges: maxEdges)
             return Result(positions: r.positions, faces: r.faces,

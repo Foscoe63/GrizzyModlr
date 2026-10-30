@@ -26,6 +26,7 @@ enum ToolDefaults {
         static let aiFillStrength = "tools.aiFillStrength"
         static let aiFillGuidance = "tools.aiFillGuidance"
         static let flowFeatureAngle = "tools.flowFeatureAngle"
+        static let flowTargetQuads = "tools.flowTargetQuads"
         static let regionTolerance = "tools.regionTolerance"
         static let regionFeather = "tools.regionFeather"
         static let tsrThreshold = "tools.tsrThreshold"
@@ -95,6 +96,8 @@ enum ToolDefaults {
     static func aiFillSteps(_ d: UserDefaults = .standard) -> Int { Int(double(Key.aiFillSteps, fallbackAIFillSteps, d)) }
     static func aiFillStrength(_ d: UserDefaults = .standard) -> Double { double(Key.aiFillStrength, fallbackAIFillStrength, d) }
     static func aiFillGuidance(_ d: UserDefaults = .standard) -> Double { double(Key.aiFillGuidance, fallbackAIFillGuidance, d) }
+    static let fallbackFlowTargetQuads = 2000.0
+    static func flowTargetQuads(_ d: UserDefaults = .standard) -> Double { double(Key.flowTargetQuads, fallbackFlowTargetQuads, d) }
     static func flowFeatureAngle(_ d: UserDefaults = .standard) -> Double { double(Key.flowFeatureAngle, fallbackFlowFeatureAngle, d) }
     static func regionTolerance(_ d: UserDefaults = .standard) -> Double { double(Key.regionTolerance, fallbackRegionTolerance, d) }
     static func regionFeather(_ d: UserDefaults = .standard) -> Double { double(Key.regionFeather, fallbackRegionFeather, d) }

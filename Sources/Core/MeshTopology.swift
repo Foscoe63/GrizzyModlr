@@ -121,6 +121,16 @@ struct MeshTopology {
         return (positions[Int(f.x)] + positions[Int(f.y)] + positions[Int(f.z)]) / 3
     }
 
+    /// Area around each vertex (a third of its incident faces), used to weight nodes when coarsening.
+    func vertexAreaWeights() -> [Float] {
+        var w = [Float](repeating: 0, count: positions.count)
+        for (i, f) in faces.enumerated() {
+            let share = faceArea[i] / 3
+            w[Int(f.x)] += share; w[Int(f.y)] += share; w[Int(f.z)] += share
+        }
+        return w.map { max($0, 1e-12) }
+    }
+
     /// Average edge length, used to size overlays and lattices.
     var averageEdgeLength: Float {
         var total: Float = 0
