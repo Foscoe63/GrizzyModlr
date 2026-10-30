@@ -6,6 +6,16 @@ import HunyuanPaintMLX
 /// In-process MLX paint/texture generation — the native-Swift replacement for the
 /// Python paint worker. Holds a resident `PaintPipeline` (weights loaded once) and
 /// runs the mesh+image → textured-mesh pipeline off-main on a serial queue.
+/// Asks the paint engine to bake a tangent-space normal map from the full-resolution shape onto
+/// the decimated mesh it just painted (nil = skip: the mesh wasn't decimated, or baking is off).
+struct NormalBakeRequest {
+    let highMesh: URL
+    let output: URL
+    let size: Int
+    let strength: Float
+    let cage: Float
+}
+
 final class PaintEngine {
     private let queue = DispatchQueue(label: "com.zimeng.Modelr.paint", qos: .userInitiated)
     private var cachedKey: String?
@@ -23,6 +33,7 @@ final class PaintEngine {
     @discardableResult
     func paint(meshURL: URL, imageURL: URL, output: URL, texture: URL, weightsRoot: URL,
                res: Int, steps: Int, tex: Int, superres: Bool, seed: UInt64, viewsDir: URL,
+               normalBake: NormalBakeRequest? = nil,
                onProgress: @escaping (String, Double?) -> Void,
                onViews: @escaping (URL) -> Void,
                onFinish: @escaping (GenerationOutcome) -> Void) -> Run {
@@ -62,9 +73,11 @@ final class PaintEngine {
                 try PaintMeshWriter.write(vertices: result.vertices, faces: result.faces,
                                           uvs: result.uvs, to: output)
                 try result.albedoPNG.write(to: texture)
+                if let normalBake { Self.bakeNormals(normalBake, lowMesh: output, run: run, onProgress: onProgress) }
                 if run.cancelled {                                // closed the post-write cancel window
-                    try? FileManager.default.removeItem(at: output)
-                    try? FileManager.default.removeItem(at: texture)
+                    for u in [output, texture, normalBake?.output].compactMap({ $0 }) {
+                        try? FileManager.default.removeItem(at: u)
+                    }
                     onFinish(.failure("Cancelled")); return
                 }
                 onFinish(.success)
@@ -83,7 +96,7 @@ final class PaintEngine {
     @discardableResult
     func paintPBR(meshURL: URL, imageURL: URL, output: URL, texture: URL, mrTexture: URL,
                   weightsRoot: URL, res: Int, steps: Int, tex: Int, superres: Bool, seed: UInt64,
-                  viewsDir: URL,
+                  viewsDir: URL, normalBake: NormalBakeRequest? = nil,
                   onProgress: @escaping (String, Double?) -> Void,
                   onViews: @escaping (URL) -> Void,
                   onFinish: @escaping (GenerationOutcome) -> Void) -> Run {
@@ -124,8 +137,11 @@ final class PaintEngine {
                                           uvs: result.uvs, to: output)
                 try result.albedoPNG.write(to: texture)
                 try result.metallicRoughnessPNG.write(to: mrTexture)
+                if let normalBake { Self.bakeNormals(normalBake, lowMesh: output, run: run, onProgress: onProgress) }
                 if run.cancelled {                                // closed the post-write cancel window
-                    for u in [output, texture, mrTexture] { try? FileManager.default.removeItem(at: u) }
+                    for u in [output, texture, mrTexture, normalBake?.output].compactMap({ $0 }) {
+                        try? FileManager.default.removeItem(at: u)
+                    }
                     onFinish(.failure("Cancelled")); return
                 }
                 onFinish(.success)
@@ -134,6 +150,24 @@ final class PaintEngine {
             }
         }
         return run
+    }
+
+    /// Bakes the detail the decimation removed into a tangent-space normal map. Best effort: any
+    /// failure (unreadable mesh, nothing to bake) leaves the paint result as it was.
+    private static func bakeNormals(_ request: NormalBakeRequest, lowMesh: URL, run: Run,
+                                    onProgress: (String, Double?) -> Void) {
+        guard !run.cancelled,
+              let low = (try? Data(contentsOf: lowMesh)).flatMap(TexturedMesh.parse),
+              let high = (try? Data(contentsOf: request.highMesh)).flatMap(MeshDecimator.parse),
+              high.faces.count * 4 >= low.faces.count * 5 else { return }     // need ≥ 25% more faces
+        onProgress("Baking normals", 0.97)
+        var options = NormalBaker.Options()
+        options.size = request.size
+        options.strength = request.strength
+        options.cage = request.cage
+        guard let png = NormalBaker.bakePNG(low: low, high: .init(positions: high.positions, faces: high.faces),
+                                            options: options, isCancelled: { run.cancelled }) else { return }
+        try? png.write(to: request.output)
     }
 
     /// Fetch (or build) the resident pipeline for `weightsRoot`. Keys only on what

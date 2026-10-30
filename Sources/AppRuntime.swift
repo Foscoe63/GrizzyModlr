@@ -735,6 +735,15 @@ final class AppRuntime {
             }
             bridge.send(.paintEngineFinished(project: project, token: token, result: result))
         }
+        // Simplify-then-bake: when the shape was decimated for painting, bake its fine relief into
+        // a normal map on the painted mesh (Settings → Tools → Detail).
+        var normalBake: NormalBakeRequest? = nil
+        if ToolDefaults.normalBake(), FileManager.default.fileExists(atPath: staged.prepMesh.path) {
+            normalBake = NormalBakeRequest(highMesh: staged.shapeMesh, output: staged.outNormal,
+                                           size: staged.settings.tex,
+                                           strength: Float(ToolDefaults.normalBakeStrength()),
+                                           cage: Float(ToolDefaults.normalBakeCage() / 100))
+        }
         // Large → 2.1 PBR (albedo + metallic-roughness); Small → 2.0 Color (RGB).
         if staged.settings.model == .large {
             run = paintEngine.paintPBR(
@@ -743,6 +752,7 @@ final class AppRuntime {
                 weightsRoot: weightsRoot,
                 res: staged.settings.res, steps: staged.settings.steps, tex: staged.settings.tex,
                 superres: staged.settings.superres, seed: staged.seed, viewsDir: viewsDir,
+                normalBake: normalBake,
                 onProgress: onProgress, onViews: onViews, onFinish: onFinish)
         } else {
             run = paintEngine.paint(
@@ -752,6 +762,7 @@ final class AppRuntime {
                 weightsRoot: weightsRoot,
                 res: staged.settings.res, steps: staged.settings.steps, tex: staged.settings.tex,
                 superres: staged.settings.superres, seed: staged.seed, viewsDir: viewsDir,
+                normalBake: normalBake,
                 onProgress: onProgress, onViews: onViews, onFinish: onFinish)
         }
         engineRuns[key] = run

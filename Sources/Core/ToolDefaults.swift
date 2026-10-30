@@ -59,9 +59,14 @@ enum ToolDefaults {
         static let ttiSuffix = "tools.ttiSuffix"
         static let ttiRemoveBackground = "tools.ttiRemoveBackground"
         static let ttiAutoGenerate = "tools.ttiAutoGenerate"
+        static let normalBake = "tools.normalBake"
+        static let normalBakeStrength = "tools.normalBakeStrength"
+        static let normalBakeCage = "tools.normalBakeCage"
     }
 
     static let fallbackDecimateK = 50.0
+    static let fallbackNormalBakeStrength = 1.0
+    static let fallbackNormalBakeCage = 1.5
     static let fallbackSmoothIterations = 3.0
     static let fallbackHoleEdges = 64.0
     static let fallbackBooleanResolution = 160.0
@@ -154,6 +159,10 @@ enum ToolDefaults {
     static func rigNaming(_ d: UserDefaults = .standard) -> String { d.string(forKey: Key.rigNaming) ?? fallbackRigNaming }
     static func rigClipSpeed(_ d: UserDefaults = .standard) -> Double { double(Key.rigClipSpeed, fallbackRigClipSpeed, d) }
     static func exportQuads(_ d: UserDefaults = .standard) -> Bool { d.bool(forKey: Key.exportQuads) }
+    static func normalBake(_ d: UserDefaults = .standard) -> Bool { d.object(forKey: Key.normalBake) as? Bool ?? true }
+    static func normalBakeStrength(_ d: UserDefaults = .standard) -> Double { double(Key.normalBakeStrength, fallbackNormalBakeStrength, d) }
+    /// Ray cage depth in percent of the model's bounding-box diagonal.
+    static func normalBakeCage(_ d: UserDefaults = .standard) -> Double { double(Key.normalBakeCage, fallbackNormalBakeCage, d) }
     static func tsrThreshold(_ d: UserDefaults = .standard) -> Float { Float(double(Key.tsrThreshold, fallbackTSRThreshold, d)) }
     static func tsrForegroundRatio(_ d: UserDefaults = .standard) -> Float { Float(double(Key.tsrForegroundRatio, fallbackTSRForegroundRatio, d)) }
     static func tsrKeepLargest(_ d: UserDefaults = .standard) -> Bool { d.object(forKey: Key.tsrKeepLargest) as? Bool ?? true }

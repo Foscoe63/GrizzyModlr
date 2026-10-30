@@ -62,6 +62,9 @@ enum MeshExporter {
         /// B = metallic). Provided by the PBR paint path; GLB embeds it alongside
         /// the base color.
         let metallicRoughnessPNG: Data?
+        /// Optional tangent-space normal map (glTF 2.0 normalTexture, +Y up) baked from the
+        /// full-resolution shape. GLB only.
+        var normalPNG: Data? = nil
     }
 
     // MARK: - Public entry point
@@ -72,10 +75,10 @@ enum MeshExporter {
     /// albedo + metallic-roughness); the other formats have no standard slot for it.
     /// `quads` (OBJ only) merges adjacent triangles into quads where they pair cleanly.
     static func export(meshURL: URL, texture: URL?, metallicRoughness: URL? = nil,
-                       format: MeshExportFormat, quads: Bool = false, rig: RigConfig = RigConfig(),
+                       normalMap: URL? = nil, format: MeshExportFormat, quads: Bool = false, rig: RigConfig = RigConfig(),
                        to dest: URL) throws {
         let mesh = try read(meshURL: meshURL, textureURL: texture,
-                            metallicRoughnessURL: metallicRoughness)
+                            metallicRoughnessURL: metallicRoughness, normalURL: normalMap)
         switch format {
         case .stl: try encodeSTL(mesh).write(to: dest)
         case .ply: try encodePLY(mesh).write(to: dest)
@@ -115,7 +118,7 @@ enum MeshExporter {
     // MARK: - Reading
 
     static func read(meshURL: URL, textureURL: URL?,
-                     metallicRoughnessURL: URL? = nil) throws -> MeshData {
+                     metallicRoughnessURL: URL? = nil, normalURL: URL? = nil) throws -> MeshData {
         guard let data = try? Data(contentsOf: meshURL), data.count >= 8 else { throw ExportError.unreadable }
         let n = Int(data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 0, as: Int32.self) })
         let m = Int(data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 4, as: Int32.self) })
@@ -142,10 +145,13 @@ enum MeshExporter {
         var mrPNG: Data? = nil
         if let metallicRoughnessURL { mrPNG = try? Data(contentsOf: metallicRoughnessURL) }
 
+        var normalPNG: Data? = nil
+        if let normalURL { normalPNG = try? Data(contentsOf: normalURL) }
+
         return MeshData(vertCount: n, faceCount: m, verts: verts, normals: normals, uvs: uvs,
                         indices: indices, rawVerts: rawVerts, rawNormals: rawNormals,
                         rawUVs: rawUVs, rawFaces: rawFaces, texturePNG: png,
-                        metallicRoughnessPNG: mrPNG)
+                        metallicRoughnessPNG: mrPNG, normalPNG: normalPNG)
     }
 
     private static func floats(_ d: Data, count: Int) -> [Float] {
@@ -303,6 +309,7 @@ enum MeshExporter {
         // PBR: a metallic-roughness map rides along only when the base color does
         // (both sample the same TEXCOORD_0 per glTF 2.0 pbrMetallicRoughness).
         let hasMR = hasUV && mesh.metallicRoughnessPNG != nil
+        let hasNormalMap = hasUV && mesh.normalPNG != nil
 
         // BIN buffer — concatenate the raw LE slices (already in glTF's expected byte layout),
         // 4-byte aligned by construction (12n, 12n, 8n, 12m are all multiples of 4).
@@ -330,6 +337,13 @@ enum MeshExporter {
             mrOffset = bin.count
             mrLen = mr.count
             bin.append(mr)
+        }
+        var normalMapOffset = 0, normalMapLen = 0
+        if hasNormalMap, let nm = mesh.normalPNG {
+            while bin.count % 4 != 0 { bin.append(0) }
+            normalMapOffset = bin.count
+            normalMapLen = nm.count
+            bin.append(nm)
         }
         let bufferLen = bin.count       // logical buffer length (unpadded)
         while bin.count % 4 != 0 { bin.append(0) }     // pad chunk to 4 bytes
@@ -401,8 +415,18 @@ enum MeshExporter {
                 pbr["metallicFactor"] = 0.0
                 pbr["roughnessFactor"] = 1.0
             }
+            var material: [String: Any] = ["name": "painted", "pbrMetallicRoughness": pbr]
+            if hasNormalMap {
+                // Tangent-space normal map; viewers derive tangents from TEXCOORD_0 (MikkTSpace).
+                let nmBV = nextBV
+                bufferViews.append(["buffer": 0, "byteOffset": normalMapOffset, "byteLength": normalMapLen])
+                nextBV += 1
+                images.append(["bufferView": nmBV, "mimeType": "image/png"])
+                textures.append(["sampler": 0, "source": images.count - 1])
+                material["normalTexture"] = ["index": textures.count - 1]
+            }
             primitive["material"] = 0
-            json["materials"] = [["name": "painted", "pbrMetallicRoughness": pbr]]
+            json["materials"] = [material]
             json["textures"] = textures
             json["images"] = images
             json["samplers"] = [["magFilter": 9729, "minFilter": 9987, "wrapS": 10497, "wrapT": 10497]]

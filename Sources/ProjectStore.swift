@@ -134,12 +134,19 @@ final class ProjectStore {
             if FileManager.default.fileExists(atPath: tex.path) {
                 // PBR version: hand the viewer the albedo + metallic-roughness pair
                 // for physically-based lighting; Color versions stay flat-textured.
+                var mrURL: URL? = nil
                 if let mrName = gen.paintedMRFileName {
                     let mr = dir.appendingPathComponent(mrName)
-                    if FileManager.default.fileExists(atPath: mr.path) {
-                        return .pbrMesh(mesh, albedo: tex, metallicRoughness: mr)
+                    if FileManager.default.fileExists(atPath: mr.path) { mrURL = mr }
+                }
+                // A baked normal map (simplify-then-bake) carries the detail decimation removed.
+                if let normalName = gen.paintedNormalFileName {
+                    let normal = dir.appendingPathComponent(normalName)
+                    if FileManager.default.fileExists(atPath: normal.path) {
+                        return .detailMesh(mesh, albedo: tex, metallicRoughness: mrURL, normal: normal)
                     }
                 }
+                if let mrURL { return .pbrMesh(mesh, albedo: tex, metallicRoughness: mrURL) }
                 return .texturedMesh(mesh, tex)
             }
         }
@@ -233,7 +240,8 @@ final class ProjectStore {
         let removedIDs = Set(toRemove.map { $0.id })
         func fileNames(_ gen: Generation) -> [String] {
             [gen.meshFileName, gen.inputFileName, gen.sourceFileName, gen.maskFileName,
-             gen.paintedMeshFileName, gen.paintedTextureFileName, gen.paintedMRFileName]
+             gen.paintedMeshFileName, gen.paintedTextureFileName, gen.paintedMRFileName,
+             gen.paintedNormalFileName]
                 .compactMap { $0 }.filter { !$0.isEmpty } + Array((gen.extraViewFiles ?? [:]).values)
         }
         // Paint versions share their input/source/mask snapshots with the shape they
@@ -1072,6 +1080,7 @@ final class ProjectStore {
                          maskFileName: base.maskFileName,
                          paintedTextureFileName: albedoDst.lastPathComponent,
                          paintedMRFileName: mrDst?.lastPathComponent,
+                         paintedNormalFileName: base.paintedNormalFileName,
                          kindRaw: "paint", sourceShapeID: base.sourceShapeID,
                          paintModelRaw: base.paintModelRaw, paintResRaw: base.paintResRaw,
                          paintStepsRaw: base.paintStepsRaw, paintTexRaw: base.paintTexRaw,
@@ -1115,7 +1124,7 @@ final class ProjectStore {
             return "The project no longer exists."
         }
         appendEditedPaint(from: base, id: newID, albedo: dst, mr: base.paintedMRFileName,
-                          mesh: base.meshFileName, summary: "hand-painted", at: i)
+                          normal: base.paintedNormalFileName, mesh: base.meshFileName, summary: "hand-painted", at: i)
         return nil
     }
 
@@ -1145,6 +1154,11 @@ final class ProjectStore {
         let albedoDst = dir.appendingPathComponent("painted_\(newID.uuidString)_albedo.png")
         let mrSrc = base.paintedMRFileName.map { dir.appendingPathComponent($0) }
         let mrDst = mrSrc == nil ? nil : dir.appendingPathComponent("painted_\(newID.uuidString)_mr.png")
+        // A tangent-space normal map follows island moves and scales; rotating an island would
+        // turn its tangent frame, so the map is dropped in that case rather than shown wrong.
+        let rotates = transforms.values.contains { $0.rotation != 0 }
+        let normalSrc = rotates ? nil : base.paintedNormalFileName.map { dir.appendingPathComponent($0) }
+        let normalDst = normalSrc == nil ? nil : dir.appendingPathComponent("painted_\(newID.uuidString)_normal.png")
         let failure = await Task.detached(priority: .userInitiated) { () -> String? in
             guard var mesh = (try? Data(contentsOf: meshSrc)).flatMap(TexturedMesh.parse) else {
                 return "The painted mesh couldn't be read."
@@ -1165,6 +1179,7 @@ final class ProjectStore {
             }
             guard remapFile(albedoSrc, albedoDst) else { return "Couldn't re-map the texture." }
             if let mrSrc, let mrDst, !remapFile(mrSrc, mrDst) { return "Couldn't re-map the material map." }
+            if let normalSrc, let normalDst, !remapFile(normalSrc, normalDst) { return "Couldn't re-map the normal map." }
             mesh.uvs = newUVs
             guard (try? mesh.serialize().write(to: meshDst, options: .atomic)) != nil else {
                 return "Couldn't save the mesh."
@@ -1172,18 +1187,20 @@ final class ProjectStore {
             return nil
         }.value
         func cleanup() {
-            for u in [meshDst, albedoDst, mrDst].compactMap({ $0 }) { try? FileManager.default.removeItem(at: u) }
+            for u in [meshDst, albedoDst, mrDst, normalDst].compactMap({ $0 }) { try? FileManager.default.removeItem(at: u) }
         }
         if let failure { cleanup(); return failure }
         guard let i = projects.firstIndex(where: { $0.id == id }) else { cleanup(); return "The project no longer exists." }
         appendEditedPaint(from: base, id: newID, albedo: albedoDst, mr: mrDst?.lastPathComponent,
-                          mesh: meshDst.lastPathComponent, summary: "UV layout edited", at: i)
+                          normal: normalDst?.lastPathComponent, mesh: meshDst.lastPathComponent,
+                          summary: rotates && base.paintedNormalFileName != nil
+                              ? "UV layout edited (normal map dropped)" : "UV layout edited", at: i)
         return nil
     }
 
     /// Saves a new paint version derived from `base` with the given files.
     private func appendEditedPaint(from base: Generation, id newID: UUID, albedo: URL, mr: String?,
-                                   mesh: String, summary: String, at i: Int) {
+                                   normal: String?, mesh: String, summary: String, at i: Int) {
         let gen = Generation(id: newID, createdAt: Date(), modelRaw: base.modelRaw, quantRaw: base.quantRaw,
                              steps: base.steps, removeBackground: base.removeBackground,
                              meshFileName: mesh, inputFileName: base.inputFileName,
@@ -1192,6 +1209,7 @@ final class ProjectStore {
                              maskFileName: base.maskFileName,
                              paintedTextureFileName: albedo.lastPathComponent,
                              paintedMRFileName: mr,
+                             paintedNormalFileName: normal,
                              kindRaw: "paint", sourceShapeID: base.sourceShapeID,
                              paintModelRaw: base.paintModelRaw, paintResRaw: base.paintResRaw,
                              paintStepsRaw: base.paintStepsRaw, paintTexRaw: base.paintTexRaw,
@@ -1230,6 +1248,9 @@ final class ProjectStore {
         /// The metallic-roughness map, written by the PBR (Large) path only. Always
         /// staged; left unwritten (and required-absent at commit) for the Color path.
         let outMR: URL
+        /// The baked tangent-space normal map. Optional output: written only when the shape was
+        /// decimated for painting and the bake succeeded.
+        let outNormal: URL
         let settings: PaintSettings
         /// The concrete seed this run uses (resolved from settings.seed or random).
         let seed: UInt64
@@ -1273,10 +1294,12 @@ final class ProjectStore {
         let outMesh = dir.appendingPathComponent("painted_\(paintID.uuidString).tmesh")
         let outTex = dir.appendingPathComponent("painted_\(paintID.uuidString)_texture.png")
         let outMR = dir.appendingPathComponent("painted_\(paintID.uuidString)_mr.png")
+        let outNormal = dir.appendingPathComponent("painted_\(paintID.uuidString)_normal.png")
         let prepMesh = dir.appendingPathComponent("painted_\(paintID.uuidString)_prep.mesh")
         try? FileManager.default.removeItem(at: outMesh)
         try? FileManager.default.removeItem(at: outTex)
         try? FileManager.default.removeItem(at: outMR)
+        try? FileManager.default.removeItem(at: outNormal)
         try? FileManager.default.removeItem(at: prepMesh)
         clearPaintStreamFiles(for: id)
 
@@ -1290,7 +1313,7 @@ final class ProjectStore {
         let settings = project.resolvedPaintSettings
         return StagedPaintRun(project: id, paintID: paintID, source: shape,
                               shapeMesh: meshURL, prepMesh: prepMesh, image: paintInput,
-                              outMesh: outMesh, outTexture: outTex, outMR: outMR,
+                              outMesh: outMesh, outTexture: outTex, outMR: outMR, outNormal: outNormal,
                               settings: settings,
                               seed: settings.seed ?? UInt64.random(in: 0..<UInt64(UInt32.max)),
                               startedAt: Date())
@@ -1335,6 +1358,7 @@ final class ProjectStore {
             maskFileName: src.maskFileName,
             paintedTextureFileName: staged.outTexture.lastPathComponent,
             paintedMRFileName: staged.isPBR ? staged.outMR.lastPathComponent : nil,
+            paintedNormalFileName: sized(staged.outNormal) ? staged.outNormal.lastPathComponent : nil,
             kindRaw: "paint", sourceShapeID: src.id,
             paintModelRaw: s.model.rawValue,
             paintResRaw: s.res, paintStepsRaw: s.steps,
@@ -1351,6 +1375,7 @@ final class ProjectStore {
         try? FileManager.default.removeItem(at: staged.outMesh)
         try? FileManager.default.removeItem(at: staged.outTexture)
         try? FileManager.default.removeItem(at: staged.outMR)
+        try? FileManager.default.removeItem(at: staged.outNormal)
         try? FileManager.default.removeItem(at: staged.prepMesh)
         // Remove the per-run input snapshot only if we created one (it lives in
         // the project folder with the painted_ prefix).
@@ -1427,7 +1452,8 @@ final class ProjectStore {
             var referenced = Set<String>()
             for gen in project.generations {
                 for name in [gen.meshFileName, gen.inputFileName, gen.sourceFileName, gen.maskFileName,
-                             gen.paintedMeshFileName, gen.paintedTextureFileName, gen.paintedMRFileName]
+                             gen.paintedMeshFileName, gen.paintedTextureFileName, gen.paintedMRFileName,
+             gen.paintedNormalFileName]
                     .compactMap({ $0 }).filter({ !$0.isEmpty }) + Array((gen.extraViewFiles ?? [:]).values) {
                     referenced.insert(name)
                 }

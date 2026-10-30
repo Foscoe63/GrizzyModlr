@@ -333,6 +333,9 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.reliefDepth) private var reliefDepth = ToolDefaults.fallbackReliefDepth
     @AppStorage(ToolDefaults.Key.reliefResolution) private var reliefResolution = ToolDefaults.fallbackReliefResolution
     @AppStorage(ToolDefaults.Key.reliefSmoothing) private var reliefSmoothing = ToolDefaults.fallbackReliefSmoothing
+    @AppStorage(ToolDefaults.Key.normalBake) private var normalBake = true
+    @AppStorage(ToolDefaults.Key.normalBakeStrength) private var normalBakeStrength = ToolDefaults.fallbackNormalBakeStrength
+    @AppStorage(ToolDefaults.Key.normalBakeCage) private var normalBakeCage = ToolDefaults.fallbackNormalBakeCage
     @AppStorage(ToolDefaults.Key.ttiSteps) private var ttiSteps = ToolDefaults.fallbackTTISteps
     @AppStorage(ToolDefaults.Key.ttiGuidance) private var ttiGuidance = ToolDefaults.fallbackTTIGuidance
     @AppStorage(ToolDefaults.Key.ttiNegative) private var ttiNegative = ToolDefaults.fallbackTTINegative
@@ -387,6 +390,15 @@ struct ToolSettingsView: View {
                 LabeledContent("Spacing for new objects") {
                     slider($sceneSpacing, 1.5...6, step: 0.25, label: String(format: "%.2f units", sceneSpacing))
                 }
+            }
+            Section("Painted detail (normal map)") {
+                Toggle("Bake fine detail into a normal map", isOn: $normalBake)
+                LabeledContent("Relief strength") { slider($normalBakeStrength, 0.25...2, step: 0.25, label: String(format: "%.2f×", normalBakeStrength)) }
+                    .disabled(!normalBake)
+                LabeledContent("Search depth") { slider($normalBakeCage, 0.5...5, step: 0.5, label: String(format: "%.1f%% of size", normalBakeCage)) }
+                    .disabled(!normalBake)
+                Text("Painting simplifies the shape to the Mesh detail budget. This keeps the original's surface detail as a normal map (same size as the texture), so the model looks as detailed as before. Raise the search depth if thin parts look flat. It is skipped when the shape is already under the budget, and exports to GLB.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Fast shape (TripoSR)") {
                 LabeledContent("Surface threshold") { slider($tsrThreshold, 5...80, step: 1, label: String(format: "%.0f", tsrThreshold)) }
@@ -548,6 +560,8 @@ struct ToolSettingsView: View {
         defaultPose = ToolDefaults.fallbackDefaultPose; weightBrushAdd = true
         tsrThreshold = ToolDefaults.fallbackTSRThreshold; tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
         tsrKeepLargest = true
+        normalBake = true; normalBakeStrength = ToolDefaults.fallbackNormalBakeStrength
+        normalBakeCage = ToolDefaults.fallbackNormalBakeCage
         reliefDepth = ToolDefaults.fallbackReliefDepth; reliefResolution = ToolDefaults.fallbackReliefResolution
         reliefSmoothing = ToolDefaults.fallbackReliefSmoothing
         ttiSteps = ToolDefaults.fallbackTTISteps; ttiGuidance = ToolDefaults.fallbackTTIGuidance

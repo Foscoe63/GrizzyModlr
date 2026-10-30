@@ -227,6 +227,36 @@ final class MeshExporterTests: XCTestCase {
     }
 
     /// The PBR-ready two-texture form: baseColor + metallicRoughness per glTF 2.0.
+    func testGLBWithNormalMapAddsNormalTexture() throws {
+        let mesh = try writeMeshFile(named: "t.tmesh", withUVs: true)
+        let albedo = try writePNG(named: "albedo.png", Self.tinyPNG)
+        let normal = try writePNG(named: "normal.png", Self.tinyMRPNG)
+        let dest = dir.appendingPathComponent("detail.glb")
+        try MeshExporter.export(meshURL: mesh, texture: albedo, normalMap: normal, format: .glb, to: dest)
+        let glb = try parseGLB(dest)
+
+        let images = try XCTUnwrap(glb.json["images"] as? [[String: Any]])
+        let textures = try XCTUnwrap(glb.json["textures"] as? [[String: Any]])
+        XCTAssertEqual(images.count, 2)
+        XCTAssertEqual(textures.count, 2)
+        let materials = try XCTUnwrap(glb.json["materials"] as? [[String: Any]])
+        let nt = try XCTUnwrap(materials[0]["normalTexture"] as? [String: Any])
+        let texIndex = try XCTUnwrap(nt["index"] as? Int)
+        let imgIndex = try XCTUnwrap(textures[texIndex]["source"] as? Int)
+        let bufferViews = try XCTUnwrap(glb.json["bufferViews"] as? [[String: Any]])
+        let bv = try XCTUnwrap(images[imgIndex]["bufferView"] as? Int)
+        let off = try XCTUnwrap(bufferViews[bv]["byteOffset"] as? Int)
+        let len = try XCTUnwrap(bufferViews[bv]["byteLength"] as? Int)
+        XCTAssertEqual(glb.bin.subdata(in: off ..< off + len), Self.tinyMRPNG)   // bytes round-trip
+        // with PBR + normal both, the three images stay distinct
+        let pbr = dir.appendingPathComponent("pbr.glb")
+        let mr = try writePNG(named: "mr.png", Self.tinyMRPNG)
+        try MeshExporter.export(meshURL: mesh, texture: albedo, metallicRoughness: mr, normalMap: normal,
+                                format: .glb, to: pbr)
+        let both = try parseGLB(pbr)
+        XCTAssertEqual((both.json["images"] as? [[String: Any]])?.count, 3)
+    }
+
     func testGLBWithMetallicRoughnessTwoTextureStructure() throws {
         let mesh = try writeMeshFile(named: "t.tmesh", withUVs: true)
         let albedo = try writePNG(named: "albedo.png", Self.tinyPNG)

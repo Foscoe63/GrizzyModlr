@@ -204,7 +204,7 @@ struct ProjectDetailView: View {
                 .padding(12)
             }
             exportOverlay(meshURL: paintExportSource?.mesh, texture: paintExportSource?.texture,
-                          metallicRoughness: paintExportSource?.mr)
+                          metallicRoughness: paintExportSource?.mr, normalMap: paintExportSource?.normal)
             if paintExportSource != nil {
                 VStack {
                     HStack {
@@ -276,7 +276,7 @@ struct ProjectDetailView: View {
             export: { fmt in
                 if let paint {
                     startExport(meshURL: paint.mesh, texture: paint.texture,
-                                metallicRoughness: paint.mr, format: fmt)
+                                metallicRoughness: paint.mr, normalMap: paint.normal, format: fmt)
                 } else if let shapeMesh {
                     startExport(meshURL: shapeMesh, texture: nil, format: fmt)
                 }
@@ -315,11 +315,12 @@ struct ProjectDetailView: View {
             hasHistory: !project.generations.isEmpty)
     }
 
-    private var paintExportSource: (mesh: URL, texture: URL, mr: URL?)? {
+    private var paintExportSource: (mesh: URL, texture: URL, mr: URL?, normal: URL?)? {
         guard !paintJob.isRunning else { return nil }
         switch texturedContent {
-        case .pbrMesh(let mesh, let albedo, let mr)?: return (mesh, albedo, mr)
-        case .texturedMesh(let mesh, let tex)?:       return (mesh, tex, nil)
+        case .detailMesh(let mesh, let albedo, let mr, let normal)?: return (mesh, albedo, mr, normal)
+        case .pbrMesh(let mesh, let albedo, let mr)?: return (mesh, albedo, mr, nil)
+        case .texturedMesh(let mesh, let tex)?:       return (mesh, tex, nil, nil)
         default:                                      return nil
         }
     }
@@ -687,7 +688,7 @@ struct ProjectDetailView: View {
     /// a finished mesh to export. `texture` non-nil ⇒ GLB/OBJ embed the painted texture.
     @ViewBuilder
     private func exportOverlay(meshURL: URL?, texture: URL?, metallicRoughness: URL? = nil,
-                               editable: Bool = false) -> some View {
+                               normalMap: URL? = nil, editable: Bool = false) -> some View {
         if let meshURL {
             VStack {
                 HStack {
@@ -741,7 +742,7 @@ struct ProjectDetailView: View {
                         ForEach(MeshExportFormat.allCases) { fmt in
                             Button {
                                 startExport(meshURL: meshURL, texture: texture,
-                                            metallicRoughness: metallicRoughness, format: fmt)
+                                            metallicRoughness: metallicRoughness, normalMap: normalMap, format: fmt)
                             } label: {
                                 Label(fmt.menuTitle, systemImage: fmt.icon)
                             }
@@ -800,7 +801,7 @@ struct ProjectDetailView: View {
     }
 
     private func startExport(meshURL: URL, texture: URL?, metallicRoughness: URL? = nil,
-                             format: MeshExportFormat) {
+                             normalMap: URL? = nil, format: MeshExportFormat) {
         let panel = NSSavePanel()
         let safe = project.name
             .replacingOccurrences(of: "/", with: "-")
@@ -818,7 +819,7 @@ struct ProjectDetailView: View {
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
                     try MeshExporter.export(meshURL: meshURL, texture: texture,
-                                            metallicRoughness: metallicRoughness,
+                                            metallicRoughness: metallicRoughness, normalMap: normalMap,
                                             format: format, quads: quads, rig: rig, to: dest)
                     DispatchQueue.main.async { NSWorkspace.shared.activateFileViewerSelecting([dest]) }
                 } catch {

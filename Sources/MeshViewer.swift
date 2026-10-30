@@ -7,6 +7,8 @@ enum ViewerContent: Equatable {
     case mesh(URL)                    // binary .mesh (preview or final shape)
     case texturedMesh(URL, URL)       // .tmesh (with UVs) + texture image
     case pbrMesh(URL, albedo: URL, metallicRoughness: URL)  // .tmesh + albedo + MR (G=rough, B=metal)
+    /// Painted .tmesh + albedo + optional MR + a tangent-space normal map baked from the full-resolution shape.
+    case detailMesh(URL, albedo: URL, metallicRoughness: URL?, normal: URL)
     case points(URL)                  // a streaming near-surface point cloud (.bin float32 xyz)
 }
 
@@ -189,6 +191,8 @@ struct MeshViewer: NSViewRepresentable {
         case .texturedMesh(let mesh, let tex):    return loadTexturedMesh(mesh, texture: tex)
         case .pbrMesh(let mesh, let albedo, let mr):
             return loadTexturedMesh(mesh, texture: albedo, metallicRoughness: mr)
+        case .detailMesh(let mesh, let albedo, let mr, let normal):
+            return loadTexturedMesh(mesh, texture: albedo, metallicRoughness: mr, normal: normal)
         case .points(let url):                    return loadPoints(url)
         }
     }
@@ -198,7 +202,8 @@ struct MeshViewer: NSViewRepresentable {
     /// to physically-based lighting: albedo → diffuse, and the MR map is split into
     /// its glTF channels — G → roughness, B → metalness — as grayscale images.
     private static func loadTexturedMesh(_ url: URL, texture: URL,
-                                         metallicRoughness: URL? = nil) -> (SCNNode, SCNVector3, CGFloat)? {
+                                         metallicRoughness: URL? = nil,
+                                         normal: URL? = nil) -> (SCNNode, SCNVector3, CGFloat)? {
         guard let data = try? Data(contentsOf: url), data.count >= 8 else { return nil }
         let n = Int(data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 0, as: Int32.self) })
         let m = Int(data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 4, as: Int32.self) })
@@ -223,7 +228,21 @@ struct MeshViewer: NSViewRepresentable {
                                          bytesPerComponent: 4, dataOffset: 0, dataStride: 8)
         let element = SCNGeometryElement(data: fData, primitiveType: .triangles,
                                          primitiveCount: m, bytesPerIndex: 4)
-        let geometry = SCNGeometry(sources: [vSource, nSource, uvSource], elements: [element])
+        var sources = [vSource, nSource, uvSource]
+        if normal != nil, let parsed = TexturedMesh.parse(data) {
+            // Normal mapping needs a tangent basis; use the same one the baker used.
+            let frames = NormalBaker.tangentFrames(parsed)
+            var tangents = [Float](); tangents.reserveCapacity(n * 4)
+            for i in 0 ..< n {
+                let t = frames.tangents[i]
+                tangents.append(contentsOf: [t.x, t.y, t.z, frames.signs[i]])
+            }
+            sources.append(SCNGeometrySource(data: tangents.withUnsafeBufferPointer { Data(buffer: $0) },
+                                             semantic: .tangent, vectorCount: n,
+                                             usesFloatComponents: true, componentsPerVector: 4,
+                                             bytesPerComponent: 4, dataOffset: 0, dataStride: 16))
+        }
+        let geometry = SCNGeometry(sources: sources, elements: [element])
 
         let material = SCNMaterial()
         material.diffuse.contents = NSImage(contentsOf: texture) ?? NSColor(white: 0.82, alpha: 1)
@@ -241,6 +260,12 @@ struct MeshViewer: NSViewRepresentable {
             }
         } else {
             material.lightingModel = .blinn
+        }
+        if let normal, let image = NSImage(contentsOf: normal) {
+            material.normal.contents = image
+            material.normal.wrapS = .repeat
+            material.normal.wrapT = .repeat
+            material.normal.intensity = 1
         }
         geometry.materials = [material]
 

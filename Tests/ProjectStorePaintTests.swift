@@ -59,6 +59,31 @@ final class ProjectStorePaintTests: XCTestCase {
 
     // MARK: - commit
 
+    func testBakedNormalMapIsRecordedAndSelectsDetailContent() throws {
+        let id = try makeShape()
+        let staged = try stagePaint(id, model: .small, seed: nil)
+        try writeMaps(staged, mr: false)
+        try Data(repeating: 4, count: 64).write(to: staged.outNormal)
+        XCTAssertNil(store.commitPaintRun(staged))
+
+        let gen = try XCTUnwrap(store.project(id)?.generations.last)
+        XCTAssertEqual(gen.paintedNormalFileName, staged.outNormal.lastPathComponent)
+        if case .detailMesh(_, _, let mr, let normal)? = store.currentViewerContent(for: store.project(id)!) {
+            XCTAssertNil(mr)
+            XCTAssertEqual(normal.lastPathComponent, staged.outNormal.lastPathComponent)
+        } else {
+            XCTFail("expected .detailMesh viewer content")
+        }
+    }
+
+    func testNoNormalMapWhenBakeWroteNothing() throws {
+        let id = try makeShape()
+        let staged = try stagePaint(id, model: .small, seed: nil)
+        try writeMaps(staged, mr: false)
+        XCTAssertNil(store.commitPaintRun(staged))
+        XCTAssertNil(store.project(id)?.generations.last?.paintedNormalFileName)
+    }
+
     func testPBRCommitRecordsMRAndSeed() throws {
         let id = try makeShape()
         let staged = try stagePaint(id, model: .large, seed: 4242)

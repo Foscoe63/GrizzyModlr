@@ -152,9 +152,9 @@ enum QualityPreset: String, CaseIterable, Identifiable {
         switch self {
         case .fastest:  return 192
         case .fast:     return 256
-        case .balanced: return 256
-        case .high:     return 320
-        case .max:      return 384
+        case .balanced: return 320
+        case .high:     return 384
+        case .max:      return 512
         }
     }
 
@@ -462,6 +462,7 @@ struct Generation: Identifiable, Codable, Hashable {
     var paintedMeshFileName: String? = nil    // (legacy) textured .tmesh
     var paintedTextureFileName: String? = nil // for a paint version: the baked albedo/base-color
     var paintedMRFileName: String? = nil      // for a PBR version: the metallic-roughness map
+    var paintedNormalFileName: String? = nil  // tangent-space normal map baked from the full-resolution shape
     var kindRaw: String? = nil          // shape (default) or paint
     var sourceShapeID: UUID? = nil      // for a paint version: the shape it textured
     var paintModelRaw: String? = nil

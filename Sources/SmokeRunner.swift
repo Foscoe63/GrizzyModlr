@@ -215,6 +215,9 @@ enum SmokeRunner {
         case .pbrMesh(let mesh, let albedo, let mr):
             try MeshExporter.export(meshURL: mesh, texture: albedo, metallicRoughness: mr,
                                     format: .glb, to: dest)
+        case .detailMesh(let mesh, let albedo, let mr, let normal):
+            try MeshExporter.export(meshURL: mesh, texture: albedo, metallicRoughness: mr,
+                                    normalMap: normal, format: .glb, to: dest)
         case .texturedMesh(let mesh, let tex):
             try MeshExporter.export(meshURL: mesh, texture: tex, format: .glb, to: dest)
         case .mesh, .points:
