@@ -312,6 +312,7 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.islandPadding) private var islandPadding = ToolDefaults.fallbackIslandPadding
     @AppStorage(ToolDefaults.Key.printSizeMM) private var printSizeMM = ToolDefaults.fallbackPrintSizeMM
     @AppStorage(ToolDefaults.Key.slicer) private var slicerChoice = ToolDefaults.fallbackSlicer
+    @AppStorage(ToolDefaults.Key.batchPaint) private var batchPaint = false
     @AppStorage(ToolDefaults.Key.tsrThreshold) private var tsrThreshold = ToolDefaults.fallbackTSRThreshold
     @AppStorage(ToolDefaults.Key.tsrForegroundRatio) private var tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
     @AppStorage(ToolDefaults.Key.tsrKeepLargest) private var tsrKeepLargest = true
@@ -418,6 +419,17 @@ struct ToolSettingsView: View {
                 Text("3MF export scales the model so its longest side is this many millimetres and sets it on the bed (0 keeps the model's own units). \"Open in slicer\" in the export menu sends that 3MF to the chosen slicer.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Batch and plugins") {
+                Toggle("Batch also paints textures", isOn: $batchPaint)
+                LabeledContent("Plugins") {
+                    Button("Open plugins folder (\(ToolPlugin.load().count) installed)") {
+                        try? FileManager.default.createDirectory(at: ToolPlugin.folder, withIntermediateDirectories: true)
+                        NSWorkspace.shared.open(ToolPlugin.folder)
+                    }
+                }
+                Text("Generate ▸ Batch Generate from Images makes one project per image and runs them one at a time. A plugin is a .json file in the plugins folder naming a command to run on the exported model (Model ▸ Tools); see docs/PLUGINS.md.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Material regions") {
                 LabeledContent("Color tolerance") { slider($regionTolerance, 0.02...0.5, step: 0.01, label: String(format: "%.0f%%", regionTolerance * 100)) }
                 LabeledContent("Edge softness") { slider($regionFeather, 0.01...0.4, step: 0.01, label: String(format: "%.0f%%", regionFeather * 100)) }
@@ -472,6 +484,7 @@ struct ToolSettingsView: View {
         regionTolerance = ToolDefaults.fallbackRegionTolerance; regionFeather = ToolDefaults.fallbackRegionFeather
         islandPadding = ToolDefaults.fallbackIslandPadding
         printSizeMM = ToolDefaults.fallbackPrintSizeMM; slicerChoice = ToolDefaults.fallbackSlicer
+        batchPaint = false
         tsrThreshold = ToolDefaults.fallbackTSRThreshold; tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
         tsrKeepLargest = true
         reliefDepth = ToolDefaults.fallbackReliefDepth; reliefResolution = ToolDefaults.fallbackReliefResolution

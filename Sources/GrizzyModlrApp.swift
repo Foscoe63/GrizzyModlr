@@ -49,6 +49,19 @@ struct GrizzyModlrApp: App {
 
                 Divider()
 
+                Button("Batch Generate from Images…") { chooseBatchImages() }
+                    .disabled(runtime.batch.running)
+                if let summary = runtime.batch.summary {
+                    Text(summary)
+                    if runtime.batch.running {
+                        Button("Cancel Batch") { runtime.batch.cancel(runtime: runtime) }
+                    } else {
+                        Button("Clear Batch") { runtime.batch.clearFinished() }
+                    }
+                }
+
+                Divider()
+
                 Button("Manage Models…") { runtime.showModelManager() }
             }
         }
@@ -58,6 +71,19 @@ struct GrizzyModlrApp: App {
                 .environment(runtime)
                 .task { runtime.bootIfNeeded() }
         }
+    }
+}
+
+extension GrizzyModlrApp {
+    /// Picks images and queues a shape (and, per Settings, paint) run for each.
+    @MainActor fileprivate func chooseBatchImages() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.message = "Choose images — one project is created and generated per image."
+        guard panel.runModal() == .OK else { return }
+        runtime.batch.start(images: panel.urls, paint: ToolDefaults.batchPaint(), runtime: runtime)
     }
 }
 

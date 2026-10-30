@@ -105,14 +105,14 @@ Comprehensive plan to evolve from image→3D to a full local 3D creation studio.
 
 #### 3.2 Extended Export
 - ✅ **USDZ** — Apple AR Quick Look
-- **FBX** — industry standard with animations
-- **3MF** — modern 3D printing format
-- **Slicer integration** — direct send to OrcaSlicer/PrusaSlicer
+- ✅ **FBX** — static mesh + texture (ASCII 7.4); animations not possible until rigging exists
+- ✅ **3MF** — scaled to a chosen size, set on the bed
+- ✅ **Slicer integration** — Open in OrcaSlicer/PrusaSlicer/Bambu Studio/Cura (3MF handoff)
 
 #### 3.3 Workflow Enhancements
-- **Batch processing** — process multiple images
+- ✅ **Batch processing** — Generate ▸ Batch Generate from Images (sequential; optional paint)
 - **Project templates** — presets for common use cases
-- **Plugin/extension system** — user-contributed tools
+- ✅ **Plugin/extension system** — JSON manifests run external tools on the exported model (docs/PLUGINS.md)
 - **Keyboard shortcuts** — power-user workflow
 
 ## Implementation Notes

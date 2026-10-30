@@ -87,3 +87,12 @@ The Python reference scripts and harness packages were in the session scratchpad
 2. Hands-on pass over the unverified tools above; file bugs as you go.
 3. Pick from: USDZ export and keyboard shortcuts (Phase 3 quick wins), per-region material editing, or a first cut at quad retopology.
 4. Update `ROADMAP.md` checkboxes and commit it.
+
+## Phase 3 round (UV-island materials, print/FBX export, batch, plugins)
+
+- Material edit can be limited to UV islands (checklist in the popover; `UVLayout.footprintMask`, padded by Settings → "UV island padding"); combines with the color region.
+- Export: `.threemf` (Sources/Core/ThreeMFExporter.swift, own stored-zip writer; scaled via Settings "3MF longest side", Y-up→Z-up, on the bed) and `.fbx` (FBXExporter.swift, ASCII 7.4, static mesh + UVs + texture ref). **FBX has only been structure-tested, not opened in Blender/Maya** — verify in a real importer.
+- `Slicer` (Sources/Core/Slicer.swift): "Open in <slicer>" in the export menu writes a temp 3MF and opens it; Settings picks the slicer. Not tested against a real slicer here (none installed).
+- Batch: `BatchQueue` (Sources/BatchQueue.swift), Generate ▸ Batch Generate from Images…; one project per image, shape then optional paint, sequential. Driven by polling `runtime.state`; **not run against real models here** — only compiles/unit-covered indirectly.
+- Plugins: `ToolPlugin` (Sources/Core/ToolPlugin.swift), Model ▸ Tools; manifest format in docs/PLUGINS.md. Tested with cp/false.
+- **Not done:** rigging, pose library, weight painting, animation export, project templates.

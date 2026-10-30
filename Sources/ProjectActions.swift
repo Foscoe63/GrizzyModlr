@@ -4,6 +4,7 @@ import SwiftUI
 /// focused scene value; commands read it, so shortcuts act on the front window's project.
 struct ProjectActions {
     var export: (MeshExportFormat) -> Void
+    var runPlugin: (ToolPlugin) -> Void
     var camera: (CameraPreset) -> Void
     var toggleHistory: () -> Void
     var toggleScene: () -> Void
@@ -50,6 +51,22 @@ struct ProjectCommands: Commands {
             Button("Compose Scene…") { actions?.toggleScene() }
                 .keyboardShortcut("k", modifiers: [.command, .option])
                 .disabled(actions?.hasHistory != true)
+            Menu("Tools") {
+                let plugins = ToolPlugin.load()
+                if plugins.isEmpty {
+                    Text("No plugins installed")
+                } else {
+                    ForEach(plugins) { plugin in
+                        Button(plugin.name) { actions?.runPlugin(plugin) }
+                    }
+                }
+                Divider()
+                Button("Open Plugins Folder") {
+                    try? FileManager.default.createDirectory(at: ToolPlugin.folder, withIntermediateDirectories: true)
+                    NSWorkspace.shared.open(ToolPlugin.folder)
+                }
+            }
+            .disabled(actions?.hasModel != true)
             Divider()
             ForEach(Array(CameraPreset.allCases.enumerated()), id: \.element) { index, preset in
                 Button("Camera: \(preset.label)") { actions?.camera(preset) }

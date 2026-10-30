@@ -12,6 +12,7 @@ import Observation
 final class AppRuntime {
     private(set) var state = AppState()
     let store: ProjectStore
+    let batch = BatchQueue()
 
     /// Latest streamed preview mesh per project (shape denoise). Transient view
     /// data, token-guarded against stale engine callbacks.

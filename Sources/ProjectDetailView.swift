@@ -277,6 +277,29 @@ struct ProjectDetailView: View {
                     startExport(meshURL: shapeMesh, texture: nil, format: fmt)
                 }
             },
+            runPlugin: { plugin in
+                let source = paint.map { (mesh: $0.mesh, tex: Optional($0.texture), mr: $0.mr) }
+                    ?? shapeMesh.map { (mesh: $0, tex: nil, mr: nil) }
+                guard let source else { return }
+                let name = project.name
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let outcome = Swift.Result { try plugin.run(meshURL: source.mesh, texture: source.tex,
+                                                                metallicRoughness: source.mr, projectName: name) }
+                    DispatchQueue.main.async {
+                        let alert = NSAlert()
+                        switch outcome {
+                        case .success(let r):
+                            alert.messageText = r.status == 0 ? "\(plugin.name) finished" : "\(plugin.name) failed (exit \(r.status))"
+                            alert.informativeText = String(r.log.suffix(600))
+                            if let out = r.produced { NSWorkspace.shared.activateFileViewerSelecting([out]) }
+                        case .failure(let error):
+                            alert.messageText = "\(plugin.name) couldn't run"
+                            alert.informativeText = "\(error.localizedDescription)"
+                        }
+                        alert.runModal()
+                    }
+                }
+            },
             camera: { preset in
                 let command = ViewerCommand(kind: .camera(preset))
                 if paint != nil { paintViewerCommand = command } else { shapeViewerCommand = command }
