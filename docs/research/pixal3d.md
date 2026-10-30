@@ -58,7 +58,7 @@ Repo revision `b0cb2e1b794cab9aa0ac38a95d794a4d9337437f`. Sizes are in bytes.
 | `*_mv` variants of the ss / 512 / 1024 / tex DiTs | same sizes as above, one per stage |
 
 - Geometry-only, single-view needs about **17.5 GB** (ss 5.36, ss dec 0.15, shape 512 5.55, shape 1024 5.55, shape decoder 0.95). Add DINOv3 ViT-L (about 0.6 GB fp16, estimate), RMBG-2.0 (about 0.9 GB, estimate), MoGe-2, and the feature upsampler.
-- Each 1.3B DiT is about 2.7 B parameters if bf16 (5.5 GB / 2 bytes). The "1_3B" in the name is therefore not the parameter count. I did not count tensors.
+- Correction (verified later): the Pixal3D DiT files are 5.5 GB because they are stored in fp32, not because they are bigger. The matching TRELLIS.2 bf16 file is 2,584,574,424 bytes; doubling it and adding 30 per-block `proj_linear` layers (2048x1536, fp32, about 0.38 GB) gives about 5.55 GB, which matches. So each DiT is about 1.3 B parameters, as the name says. Pixal3D's `shape_dec` file has the same size and LFS oid as TRELLIS.2's, so that decoder is identical.
 - File names and sizes are verified. The SHA-256 values are the LFS oids and would need to be recorded when the files are actually downloaded.
 
 ## Does it depend on TRELLIS.2?
