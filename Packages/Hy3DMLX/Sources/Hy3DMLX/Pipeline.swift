@@ -89,63 +89,25 @@ public struct Pipeline {
                               minResolution: Int = 63, mcLevel: Float = 0.0,
                               numChunks: Int = 8000) -> MLXArray {
         let kv = vae.decode(latents / vae.scaleFactor); eval(kv)
-        let bmin = -bound, bsize = 2 * bound
-        var resList: [Int] = []
-        var r = R
-        while r >= minResolution { resList.append(r); r /= 2 }
-        resList.reverse()                                                // [coarse ... fine]
-        if resList.isEmpty { resList = [R] }
-
-        // coarse dense decode (ij order: i=x slowest, matches MarchingCubes grid[i,j,k])
-        let r0 = resList[0], n0 = r0 + 1
-        let step0 = bsize / Float(r0)
-        var coarse = [Float](repeating: 0, count: n0 * n0 * n0 * 3)
-        var p = 0
-        for i in 0 ..< n0 {
-            let x = bmin + Float(i) * step0
-            for j in 0 ..< n0 {
-                let y = bmin + Float(j) * step0
-                for k in 0 ..< n0 {
-                    coarse[p] = x; coarse[p + 1] = y; coarse[p + 2] = bmin + Float(k) * step0; p += 3
-                }
-            }
-        }
-        var grid = decodePoints(kv: kv, pts: coarse, count: n0 * n0 * n0, numChunks: numChunks)
-        var gn = n0
-
-        for li in 1 ..< resList.count {
-            let res = resList[li], gs = res + 1, step = bsize / Float(res)
-            var near = Self.nearSurfaceMask(grid, gn, mcLevel)
-            let expand = (res == resList.last!) ? 0 : 1
-            for _ in 0 ..< expand { near = Self.dilate(near, gn) }
-            var nxt = [Bool](repeating: false, count: gs * gs * gs)      // coarse near -> fine (x2)
-            for ci in 0 ..< gn {
-                for cj in 0 ..< gn {
-                    for ck in 0 ..< gn where near[(ci * gn + cj) * gn + ck] {
-                        let fi = Swift.min(ci * 2, gs - 1), fj = Swift.min(cj * 2, gs - 1), fk = Swift.min(ck * 2, gs - 1)
-                        nxt[(fi * gs + fj) * gs + fk] = true
-                    }
-                }
-            }
-            for _ in 0 ..< (2 - expand) { nxt = Self.dilate(nxt, gs) }
-            var nidx: [Int] = []                                        // flat indices of active voxels
-            var pts: [Float] = []
-            for fi in 0 ..< gs {
-                let x = bmin + Float(fi) * step
-                for fj in 0 ..< gs {
-                    let y = bmin + Float(fj) * step
-                    for fk in 0 ..< gs where nxt[(fi * gs + fj) * gs + fk] {
-                        nidx.append((fi * gs + fj) * gs + fk)
-                        pts.append(x); pts.append(y); pts.append(bmin + Float(fk) * step)
-                    }
-                }
-            }
-            let vals = decodePoints(kv: kv, pts: pts, count: nidx.count, numChunks: numChunks)
-            var newGrid = [Float](repeating: Float.nan, count: gs * gs * gs)
-            for m in 0 ..< nidx.count { newGrid[nidx[m]] = vals[m] }
-            grid = newGrid; gn = gs
+        let (grid, gn) = OctreeSDF.dense(resolution: R, bound: bound, minResolution: minResolution, mcLevel: mcLevel) { pts, count in
+            decodePoints(kv: kv, pts: pts, count: count, numChunks: numChunks)
         }
         return MLXArray(grid, [gn, gn, gn])
+    }
+
+    /// Same field as `gridSDFOctree`, but block-sparse: memory follows the near-surface band instead of
+    /// the full (R+1)³ cube, so R can go to 2048. Returns nil if cancelled.
+    func gridSDFSparse(latents: MLXArray, resolution R: Int, bound: Float = 1.01,
+                       minResolution: Int = 63, mcLevel: Float = 0.0, numChunks: Int = 8000,
+                       isCancelled: () -> Bool = { false },
+                       progress: ((Float) -> Void)? = nil) -> SparseSDFGrid? {
+        let kv = vae.decode(latents / vae.scaleFactor); eval(kv)
+        return OctreeSDF.sparse(resolution: R, bound: bound, minResolution: minResolution, mcLevel: mcLevel,
+                                isCancelled: isCancelled, progress: progress) { pts, count in
+            let out = decodePoints(kv: kv, pts: pts, count: count, numChunks: numChunks)
+            MLX.Memory.clearCache()
+            return out
+        }
     }
 
     /// Cells bracketing the iso-surface: sign change vs a 6-neighbor, or |value+alpha| < 0.95.

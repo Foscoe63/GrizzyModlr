@@ -13,8 +13,14 @@ struct ReferenceViewsStrip: View {
     @State private var targeted: ReferenceView?
     @State private var showSynth = false
     @State private var showTextPanel = false
+    @State private var personDetected = false
 
     private var project: Project? { store.project(projectID) }
+
+    /// A person photo with no extra views yet: nudge toward synthesizing them.
+    var suggestSynthesis: Bool {
+        personDetected && project?.extraViews.isEmpty == true && runtime.viewSynth[projectID] == nil
+    }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -22,10 +28,21 @@ struct ReferenceViewsStrip: View {
                 ForEach(ReferenceView.allCases) { view in slot(view) }
             }
             synthesisRow
-            Text(project?.extraViews.isEmpty == false
-                 ? "Multi-view model will be used"
-                 : "Optional: add more angles for a more accurate back side")
-                .font(.caption2).foregroundStyle(.tertiary)
+            if suggestSynthesis {
+                Label("A person photo only shows the front — the back and sides are guessed. Try Synthesize views.",
+                      systemImage: "person.fill.viewfinder")
+                    .font(.caption2).foregroundStyle(.orange)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text(project?.extraViews.isEmpty == false
+                     ? "Multi-view model will be used"
+                     : "Optional: add more angles for a more accurate back side")
+                    .font(.caption2).foregroundStyle(.tertiary)
+            }
+        }
+        .task(id: reloadKey) {
+            guard let project, let url = store.imageURL(for: project) else { personDetected = false; return }
+            personDetected = await PersonDetector.containsPerson(at: url)
         }
         .padding(10)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -120,6 +137,7 @@ extension ReferenceViewsStrip {
                     Label("Synthesize views", systemImage: "sparkles")
                 }
                 .controlSize(.small)
+                .tint(suggestSynthesis ? Color.accentColor : nil)
                 .help(ModelStore.isInstalled(.viewSynthesis)
                       ? "Generate six candidate side views from the main image"
                       : "Installs the Zero123++ view-synthesis model (5.6 GB, non-commercial license)")

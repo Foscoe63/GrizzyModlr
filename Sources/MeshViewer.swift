@@ -204,6 +204,8 @@ struct MeshViewer: NSViewRepresentable {
     private static func loadTexturedMesh(_ url: URL, texture: URL,
                                          metallicRoughness: URL? = nil,
                                          normal: URL? = nil) -> (SCNNode, SCNVector3, CGFloat)? {
+        // Very dense shapes (high-resolution runs) are shown as a cached simplified copy; exports use the full file.
+        let url = ViewLOD.displayURL(for: url)
         guard let data = try? Data(contentsOf: url), data.count >= 8 else { return nil }
         let n = Int(data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 0, as: Int32.self) })
         let m = Int(data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 4, as: Int32.self) })

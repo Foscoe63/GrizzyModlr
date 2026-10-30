@@ -6,6 +6,7 @@ struct VersionHistoryView: View {
     @Environment(ProjectStore.self) private var store
     let projectID: Project.ID
     var onClose: () -> Void = {}
+    var onCompare: (() -> Void)? = nil
 
     private var project: Project? { store.project(projectID) }
 
@@ -14,6 +15,10 @@ struct VersionHistoryView: View {
             HStack {
                 Text("Version History").font(.headline)
                 Spacer()
+                if let onCompare, (project?.generations.count ?? 0) > 1 {
+                    Button(action: onCompare) { Label("Compare", systemImage: "square.split.2x1") }
+                        .controlSize(.small).help("View two versions side by side")
+                }
                 if let project {
                     Text("\(project.generations.count)")
                         .font(.callout).foregroundStyle(.secondary)

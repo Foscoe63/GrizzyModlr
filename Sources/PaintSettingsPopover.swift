@@ -24,6 +24,12 @@ struct PaintSettingsPopover: View {
 
                 Toggle("Advanced mode", isOn: advancedBinding.animation(.snappy(duration: 0.2)))
                     .toggleStyle(.switch)
+
+                Button { store.applyMaximumDetail(for: projectID) } label: {
+                    Label("Use maximum detail", systemImage: "wand.and.stars")
+                }
+                .controlSize(.small)
+                .help("Paint: Max quality, 4096 texture, 400k triangles, super-resolution. Also sets the shape to its practical maximum.")
             }
         }
         .padding(16)

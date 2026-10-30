@@ -171,8 +171,19 @@ public final class ShapeGenerator {
         if isCancelled() { return nil }
 
         onProgress?(.init(stage: "Decoding shape", fraction: 0.72))
-        let grid = octree ? pipe.gridSDFOctree(latents: lat, resolution: resolution)
-                          : pipe.gridSDF(latents: lat, resolution: resolution)
+        if octree {
+            // Block-sparse decode + marching cubes: memory follows the surface band, not the (R+1)³ cube.
+            guard let sparse = pipe.gridSDFSparse(latents: lat, resolution: resolution, isCancelled: isCancelled,
+                                                  progress: { f in
+                onProgress?(.init(stage: "Decoding shape", fraction: 0.72 + 0.18 * f))
+            }) else { return nil }
+            MLX.Memory.clearCache()
+            onProgress?(.init(stage: "Building mesh", fraction: 0.9))
+            guard let mesh = MarchingCubes.extract(sparse: sparse, level: 0.0, isCancelled: isCancelled) else { return nil }
+            onProgress?(.init(stage: "Done", fraction: 1.0))
+            return mesh
+        }
+        let grid = pipe.gridSDF(latents: lat, resolution: resolution)
         eval(grid); MLX.Memory.clearCache()       // release decode buffers before marching cubes
         if isCancelled() { return nil }
 

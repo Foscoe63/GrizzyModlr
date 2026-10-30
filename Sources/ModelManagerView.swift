@@ -343,187 +343,234 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.ttiRemoveBackground) private var ttiRemoveBackground = true
     @AppStorage(ToolDefaults.Key.ttiAutoGenerate) private var ttiAutoGenerate = false
 
-    var body: some View {
-        Form {
-            Section("Mesh editing") {
-                LabeledContent("Decimate target") {
-                    slider($decimateK, 5...400, step: 5, label: "\(Int(decimateK))k triangles")
-                }
-                LabeledContent("Smoothing") {
-                    slider($smoothIterations, 1...20, step: 1, label: "\(Int(smoothIterations)) iterations")
-                }
-                LabeledContent("Fill holes up to") {
-                    slider($holeEdges, 4...256, step: 4, label: "\(Int(holeEdges)) edges")
-                }
-            }
-            Section("Topology") {
-                Picker("Symmetry axis", selection: $symmetryAxis) {
-                    ForEach(SymmetryAxis.allCases) { Text($0.rawValue.uppercased()).tag($0.rawValue) }
-                }
-                .pickerStyle(.segmented)
-                Picker("Keep", selection: $keepPositive) {
-                    Text("Positive half").tag(true); Text("Negative half").tag(false)
-                }
-                .pickerStyle(.segmented)
-                LabeledContent("Remesh detail") {
-                    slider($remeshResolution, 48...320, step: 16, label: "\(Int(remeshResolution)) voxels")
-                }
-                LabeledContent("LOD levels") {
-                    HStack {
-                        TextField("LOD levels", text: $lodLevels, prompt: Text("50, 25, 10")).labelsHidden().textFieldStyle(.roundedBorder).frame(width: 120)
-                        Text("% of triangles").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                if ToolDefaults.parseLODLevels(lodLevels).isEmpty {
-                    Text("No valid levels — the default (50, 25, 10) is used.").font(.caption).foregroundStyle(.orange)
-                }
-            }
-            Section("Combine") {
-                LabeledContent("Boolean detail") {
-                    slider($booleanResolution, 64...384, step: 16, label: "\(Int(booleanResolution)) voxels")
-                }
-                Toggle("Keep sharp edges", isOn: $booleanSharp)
-                Text("Places result vertices on the creases where shapes meet, so cuts stay crisp at lower detail. Above 256 voxels uses a lot of memory.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Scenes") {
-                LabeledContent("Spacing for new objects") {
-                    slider($sceneSpacing, 1.5...6, step: 0.25, label: String(format: "%.2f units", sceneSpacing))
-                }
-            }
-            Section("Painted detail (normal map)") {
-                Toggle("Bake fine detail into a normal map", isOn: $normalBake)
-                LabeledContent("Relief strength") { slider($normalBakeStrength, 0.25...2, step: 0.25, label: String(format: "%.2f×", normalBakeStrength)) }
-                    .disabled(!normalBake)
-                LabeledContent("Search depth") { slider($normalBakeCage, 0.5...5, step: 0.5, label: String(format: "%.1f%% of size", normalBakeCage)) }
-                    .disabled(!normalBake)
-                Text("Painting simplifies the shape to the Mesh detail budget. This keeps the original's surface detail as a normal map (same size as the texture), so the model looks as detailed as before. Raise the search depth if thin parts look flat. It is skipped when the shape is already under the budget, and exports to GLB.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Fast shape (TripoSR)") {
-                LabeledContent("Surface threshold") { slider($tsrThreshold, 5...80, step: 1, label: String(format: "%.0f", tsrThreshold)) }
-                LabeledContent("Subject size in frame") { slider($tsrForegroundRatio, 0.5...1, step: 0.05, label: String(format: "%.0f%%", tsrForegroundRatio * 100)) }
-                Toggle("Drop floating specks (keep the largest piece)", isOn: $tsrKeepLargest)
-                Text("Pick Fast in the shape model menu. Higher threshold = thinner surface; mesh detail follows the quality slider. Fast makes the shape only; paint it afterwards.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Depth relief") {
-                LabeledContent("Relief height") { slider($reliefDepth, 0.05...0.6, step: 0.05, label: String(format: "%.0f%% of width", reliefDepth * 100)) }
-                LabeledContent("Detail") { slider($reliefResolution, 96...512, step: 32, label: "\(Int(reliefResolution)) samples") }
-                LabeledContent("Smoothing") { slider($reliefSmoothing, 0...8, step: 1, label: "\(Int(reliefSmoothing)) passes") }
-                Text("Estimates depth from the image (Depth Anything V2) and extrudes a solid with a flat back — a quick 2.5D shape.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Text to 3D") {
-                LabeledContent("Image steps") { slider($ttiSteps, 10...50, step: 1, label: "\(Int(ttiSteps)) steps") }
-                LabeledContent("Prompt strength") { slider($ttiGuidance, 3...14, step: 0.5, label: String(format: "%.1f", ttiGuidance)) }
-                TextField("Style added to every prompt", text: $ttiSuffix, axis: .vertical).lineLimit(1...3)
-                TextField("Negative prompt", text: $ttiNegative, axis: .vertical).lineLimit(1...3)
-                Toggle("Remove the background after generating", isOn: $ttiRemoveBackground)
-                Toggle("Start the 3D generation automatically", isOn: $ttiAutoGenerate)
-                Text("Describe an object in the image panel; Stable Diffusion 2.1 makes the starting image, then the shape model builds it.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Export") {
-                Toggle("OBJ as quads where triangles pair cleanly", isOn: $exportQuads)
-                Text("Merges adjacent triangles into quads (best on remeshed models). GLB, STL and PLY stay triangles.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Flow field") {
-                LabeledContent("Crease angle") { slider($flowFeatureAngle, 10...80, step: 5, label: "\(Int(flowFeatureAngle))°") }
-                LabeledContent("Guide strength") { slider($flowGuideStrength, 5...100, step: 5, label: "\(Int(flowGuideStrength))") }
-                LabeledContent("Flow remesh quads") { slider($flowTargetQuads, 500...8000, step: 500, label: "\(Int(flowTargetQuads))") }
-                LabeledContent("Field smoothing passes") { slider($flowFieldIterations, 50...1000, step: 50, label: "\(Int(flowFieldIterations))") }
-                LabeledContent("Lattice passes") { slider($flowPositionIterations, 20...400, step: 20, label: "\(Int(flowPositionIterations))") }
-                LabeledContent("Largest gap to fill") { slider($flowMaxHoleEdges, 4...24, step: 1, label: "\(Int(flowMaxHoleEdges)) edges") }
-                Text("More passes give straighter, more regular rows but take longer. Gaps up to the chosen size are closed with a few triangles; larger ones get quads or a fan. Edges sharper than this are treated as creases the flow lines follow. Used by the flow field view and flow remesh. Guide strength is how hard drawn guide curves pull the flow compared with creases.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("3D printing") {
-                LabeledContent("3MF longest side") { slider($printSizeMM, 0...400, step: 5, label: printSizeMM == 0 ? "as is" : "\(Int(printSizeMM)) mm") }
-                Picker("Slicer", selection: $slicerChoice) {
-                    Text("First installed").tag("auto")
-                    ForEach(Slicer.allCases) { Text($0.title + ($0.appURL == nil ? " (not installed)" : "")).tag($0.rawValue) }
-                }
-                Text("3MF export scales the model so its longest side is this many millimetres and sets it on the bed (0 keeps the model's own units). \"Open in slicer\" in the export menu sends that 3MF to the chosen slicer.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Project templates") {
-                Picker("New projects start from", selection: $defaultTemplate) {
-                    Text("App defaults").tag("none")
-                    ForEach(ProjectTemplate.all()) { Text($0.name).tag($0.name) }
-                }
-                ForEach(customTemplates) { t in
-                    LabeledContent(t.name) {
-                        Button("Delete", role: .destructive) {
-                            customTemplates.removeAll { $0.name == t.name }
-                            ProjectTemplate.saveCustom(customTemplates)
-                            if defaultTemplate == t.name { defaultTemplate = "none" }
-                        }
-                    }
-                }
-                Text("File ▸ New Project from Template (or the arrow beside + in the sidebar) applies a template once. Save your own from a project's settings with the sidebar menu.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Rigging") {
-                Picker("Animation clip", selection: $rigClip) {
-                    ForEach(PoseLibrary.clips, id: \.name) { Text($0.name).tag($0.name) }
-                }
-                Picker("Joint names", selection: $rigNaming) {
-                    ForEach(JointNaming.allCases) { Text($0.label).tag($0.rawValue) }
-                }
-                Picker("Default pose", selection: $defaultPose) {
-                    ForEach(PoseLibrary.all, id: \.name) { Text($0.name).tag($0.name) }
-                }
-                Picker("Weight brush starts as", selection: $weightBrushAdd) { Text("Add").tag(true); Text("Remove").tag(false) }
-                    .pickerStyle(.segmented)
-                LabeledContent("Arms-out threshold") { slider($rigTPoseReach, 0.3...0.7, step: 0.05, label: String(format: "%.2f × height", rigTPoseReach)) }
-                LabeledContent("Min. height ÷ width") { slider($rigMinAspect, 1.2...3, step: 0.1, label: String(format: "%.1f", rigMinAspect)) }
-                LabeledContent("Weight brush size") { slider($weightBrushRadius, 0.02...0.25, step: 0.01, label: String(format: "%.0f%% of height", weightBrushRadius * 100)) }
-                LabeledContent("Weight brush power") { slider($weightBrushStrength, 0.1...1, step: 0.05, label: String(format: "%.0f%%", weightBrushStrength * 100)) }
-                LabeledContent("Clip speed") { slider($rigClipSpeed, 0.25...3, step: 0.25, label: String(format: "×%.2f", rigClipSpeed)) }
-                Text("The rigged GLB export fits a standard humanoid skeleton (works on upright, front-facing figures with arms out or hanging) and embeds this clip. Arms-out threshold: how far the model must reach sideways at shoulder height (as a share of its height) to be fitted as a T-pose. Min. height ÷ width: below this a model with its arms down is rejected as not a standing figure (busts, props). Joint names let Mixamo or Unity animation retarget onto the export by name. Poses can also be baked into the mesh from the mesh-edit popover.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Batch and plugins") {
-                Toggle("Batch also paints textures", isOn: $batchPaint)
-                LabeledContent("Plugins") {
-                    Button("Open plugins folder (\(ToolPlugin.load().count) installed)") {
-                        try? FileManager.default.createDirectory(at: ToolPlugin.folder, withIntermediateDirectories: true)
-                        NSWorkspace.shared.open(ToolPlugin.folder)
-                    }
-                }
-                Text("Generate ▸ Batch Generate from Images makes one project per image and runs them one at a time. A plugin is a .json file in the plugins folder naming a command to run on the exported model (Model ▸ Tools); see docs/PLUGINS.md.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Material regions") {
-                LabeledContent("Color tolerance") { slider($regionTolerance, 0.02...0.5, step: 0.01, label: String(format: "%.0f%%", regionTolerance * 100)) }
-                LabeledContent("Edge softness") { slider($regionFeather, 0.01...0.4, step: 0.01, label: String(format: "%.0f%%", regionFeather * 100)) }
-                LabeledContent("UV island padding") { slider($islandPadding, 0...8, step: 1, label: "\(Int(islandPadding)) px") }
-                Text("Starting values when limiting a material edit to one color of the texture. Island padding grows a selected UV island past its edge so seams don't show a halo.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("AI Fill") {
-                TextField("Default prompt", text: $aiFillPrompt, axis: .vertical).lineLimit(2...3)
-                LabeledContent("Steps") { slider($aiFillSteps, 10...50, step: 1, label: "\(Int(aiFillSteps))") }
-                LabeledContent("Strength") { slider($aiFillStrength, 0.3...1, step: 0.05, label: String(format: "%.0f%%", aiFillStrength * 100)) }
-                LabeledContent("Prompt guidance") { slider($aiFillGuidance, 1...12, step: 0.5, label: String(format: "%.1f", aiFillGuidance)) }
-                Text("The texture's AI Fill tool regenerates the marked area with Stable Diffusion 2.1 (the Text to 3D model). Lower strength stays closer to what is there.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Brushes") {
-                LabeledContent("Sculpt size") { slider($sculptSize, 0.02...0.4, step: 0.01, label: String(format: "%.0f%%", sculptSize * 100)) }
-                LabeledContent("Sculpt strength") { slider($sculptStrength, 0.05...1, step: 0.05, label: String(format: "%.0f%%", sculptStrength * 100)) }
-                LabeledContent("Paint size") { slider($paintSize, 0.01...0.2, step: 0.01, label: String(format: "%.0f%%", paintSize * 100)) }
-                LabeledContent("Paint hardness") { slider($paintHardness, 0...1, step: 0.05, label: String(format: "%.0f%%", paintHardness * 100)) }
-                LabeledContent("Paint opacity") { slider($paintOpacity, 0.05...1, step: 0.05, label: String(format: "%.0f%%", paintOpacity * 100)) }
-            }
-            Section {
-                Button("Reset to defaults") { reset() }
+    private enum Group: String, CaseIterable, Identifiable {
+        case mesh, paint, generate, rigging, export, general
+        var id: String { rawValue }
+        /// Which stage these settings touch, so nobody expects them to change shape generation.
+        var stageNote: String {
+            switch self {
+            case .mesh: return "Starting values for the mesh-edit tools (Decimate, Remesh, Combine, Flow). They don't change shape generation — use the cube button's quality controls for that."
+            case .paint: return "Used when painting and editing textures. Mesh detail and texture size for a paint run are in the paint settings (PBR/Color button)."
+            case .generate: return "Settings for the alternative shape sources (Fast, Depth relief, Text to 3D). Normal shape generation is set by the cube button."
+            case .rigging: return "Used by rigged GLB export and the weight brush."
+            case .export: return "Used when exporting and sending to a slicer."
+            case .general: return "App-wide defaults: scenes, new-project templates, batch runs and plugins."
             }
         }
-        .formStyle(.grouped)
-        .frame(height: 960)
+        var label: String {
+            switch self {
+            case .mesh: return "Mesh"
+            case .paint: return "Paint"
+            case .generate: return "Generate"
+            case .rigging: return "Rigging"
+            case .export: return "Export"
+            case .general: return "General"
+            }
+        }
+    }
+
+    @AppStorage("tools.settingsGroup") private var groupRaw = Group.mesh.rawValue
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("Group", selection: $groupRaw) {
+                ForEach(Group.allCases) { Text($0.label).tag($0.rawValue) }
+            }
+            .pickerStyle(.segmented).labelsHidden()
+            .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 4)
+            Form {
+                Section {
+                    Label((Group(rawValue: groupRaw) ?? .mesh).stageNote, systemImage: "info.circle")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                switch Group(rawValue: groupRaw) ?? .mesh {
+                case .mesh:
+                Section("Mesh editing") {
+                    LabeledContent("Decimate target") {
+                        slider($decimateK, 5...400, step: 5, label: "\(Int(decimateK))k triangles")
+                    }
+                    LabeledContent("Smoothing") {
+                        slider($smoothIterations, 1...20, step: 1, label: "\(Int(smoothIterations)) iterations")
+                    }
+                    LabeledContent("Fill holes up to") {
+                        slider($holeEdges, 4...256, step: 4, label: "\(Int(holeEdges)) edges")
+                    }
+                }
+                Section("Topology") {
+                    Picker("Symmetry axis", selection: $symmetryAxis) {
+                        ForEach(SymmetryAxis.allCases) { Text($0.rawValue.uppercased()).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.segmented)
+                    Picker("Keep", selection: $keepPositive) {
+                        Text("Positive half").tag(true); Text("Negative half").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    LabeledContent("Remesh detail") {
+                        slider($remeshResolution, 48...320, step: 16, label: "\(Int(remeshResolution)) voxels")
+                    }
+                    LabeledContent("LOD levels") {
+                        HStack {
+                            TextField("LOD levels", text: $lodLevels, prompt: Text("50, 25, 10")).labelsHidden().textFieldStyle(.roundedBorder).frame(width: 120)
+                            Text("% of triangles").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    if ToolDefaults.parseLODLevels(lodLevels).isEmpty {
+                        Text("No valid levels — the default (50, 25, 10) is used.").font(.caption).foregroundStyle(.orange)
+                    }
+                }
+                Section("Combine") {
+                    LabeledContent("Boolean detail") {
+                        slider($booleanResolution, 64...384, step: 16, label: "\(Int(booleanResolution)) voxels")
+                    }
+                    Toggle("Keep sharp edges", isOn: $booleanSharp)
+                    Text("Places result vertices on the creases where shapes meet, so cuts stay crisp at lower detail. Above 256 voxels uses a lot of memory.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Section("Flow field") {
+                    LabeledContent("Crease angle") { slider($flowFeatureAngle, 10...80, step: 5, label: "\(Int(flowFeatureAngle))°") }
+                    LabeledContent("Guide strength") { slider($flowGuideStrength, 5...100, step: 5, label: "\(Int(flowGuideStrength))") }
+                    LabeledContent("Flow remesh quads") { slider($flowTargetQuads, 500...8000, step: 500, label: "\(Int(flowTargetQuads))") }
+                    LabeledContent("Field smoothing passes") { slider($flowFieldIterations, 50...1000, step: 50, label: "\(Int(flowFieldIterations))") }
+                    LabeledContent("Lattice passes") { slider($flowPositionIterations, 20...400, step: 20, label: "\(Int(flowPositionIterations))") }
+                    LabeledContent("Largest gap to fill") { slider($flowMaxHoleEdges, 4...24, step: 1, label: "\(Int(flowMaxHoleEdges)) edges") }
+                    Text("More passes give straighter, more regular rows but take longer. Gaps up to the chosen size are closed with a few triangles; larger ones get quads or a fan. Edges sharper than this are treated as creases the flow lines follow. Used by the flow field view and flow remesh. Guide strength is how hard drawn guide curves pull the flow compared with creases.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                case .paint:
+                Section("Painted detail (normal map)") {
+                    Toggle("Bake fine detail into a normal map", isOn: $normalBake)
+                    LabeledContent("Relief strength") { slider($normalBakeStrength, 0.25...2, step: 0.25, label: String(format: "%.2f×", normalBakeStrength)) }
+                        .disabled(!normalBake)
+                    LabeledContent("Search depth") { slider($normalBakeCage, 0.5...5, step: 0.5, label: String(format: "%.1f%% of size", normalBakeCage)) }
+                        .disabled(!normalBake)
+                    Text("Painting simplifies the shape to the Mesh detail budget. This keeps the original's surface detail as a normal map (same size as the texture), so the model looks as detailed as before. Raise the search depth if thin parts look flat. It is skipped when the shape is already under the budget, and exports to GLB.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Section("Material regions") {
+                    LabeledContent("Color tolerance") { slider($regionTolerance, 0.02...0.5, step: 0.01, label: String(format: "%.0f%%", regionTolerance * 100)) }
+                    LabeledContent("Edge softness") { slider($regionFeather, 0.01...0.4, step: 0.01, label: String(format: "%.0f%%", regionFeather * 100)) }
+                    LabeledContent("UV island padding") { slider($islandPadding, 0...8, step: 1, label: "\(Int(islandPadding)) px") }
+                    Text("Starting values when limiting a material edit to one color of the texture. Island padding grows a selected UV island past its edge so seams don't show a halo.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Section("AI Fill") {
+                    TextField("Default prompt", text: $aiFillPrompt, axis: .vertical).lineLimit(2...3)
+                    LabeledContent("Steps") { slider($aiFillSteps, 10...50, step: 1, label: "\(Int(aiFillSteps))") }
+                    LabeledContent("Strength") { slider($aiFillStrength, 0.3...1, step: 0.05, label: String(format: "%.0f%%", aiFillStrength * 100)) }
+                    LabeledContent("Prompt guidance") { slider($aiFillGuidance, 1...12, step: 0.5, label: String(format: "%.1f", aiFillGuidance)) }
+                    Text("The texture's AI Fill tool regenerates the marked area with Stable Diffusion 2.1 (the Text to 3D model). Lower strength stays closer to what is there.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Section("Brushes") {
+                    LabeledContent("Sculpt size") { slider($sculptSize, 0.02...0.4, step: 0.01, label: String(format: "%.0f%%", sculptSize * 100)) }
+                    LabeledContent("Sculpt strength") { slider($sculptStrength, 0.05...1, step: 0.05, label: String(format: "%.0f%%", sculptStrength * 100)) }
+                    LabeledContent("Paint size") { slider($paintSize, 0.01...0.2, step: 0.01, label: String(format: "%.0f%%", paintSize * 100)) }
+                    LabeledContent("Paint hardness") { slider($paintHardness, 0...1, step: 0.05, label: String(format: "%.0f%%", paintHardness * 100)) }
+                    LabeledContent("Paint opacity") { slider($paintOpacity, 0.05...1, step: 0.05, label: String(format: "%.0f%%", paintOpacity * 100)) }
+                }
+                case .generate:
+                Section("Fast shape (TripoSR)") {
+                    LabeledContent("Surface threshold") { slider($tsrThreshold, 5...80, step: 1, label: String(format: "%.0f", tsrThreshold)) }
+                    LabeledContent("Subject size in frame") { slider($tsrForegroundRatio, 0.5...1, step: 0.05, label: String(format: "%.0f%%", tsrForegroundRatio * 100)) }
+                    Toggle("Drop floating specks (keep the largest piece)", isOn: $tsrKeepLargest)
+                    Text("Pick Fast in the shape model menu. Higher threshold = thinner surface; mesh detail follows the quality slider. Fast makes the shape only; paint it afterwards.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Section("Depth relief") {
+                    LabeledContent("Relief height") { slider($reliefDepth, 0.05...0.6, step: 0.05, label: String(format: "%.0f%% of width", reliefDepth * 100)) }
+                    LabeledContent("Detail") { slider($reliefResolution, 96...512, step: 32, label: "\(Int(reliefResolution)) samples") }
+                    LabeledContent("Smoothing") { slider($reliefSmoothing, 0...8, step: 1, label: "\(Int(reliefSmoothing)) passes") }
+                    Text("Estimates depth from the image (Depth Anything V2) and extrudes a solid with a flat back — a quick 2.5D shape.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Section("Text to 3D") {
+                    LabeledContent("Image steps") { slider($ttiSteps, 10...50, step: 1, label: "\(Int(ttiSteps)) steps") }
+                    LabeledContent("Prompt strength") { slider($ttiGuidance, 3...14, step: 0.5, label: String(format: "%.1f", ttiGuidance)) }
+                    TextField("Style added to every prompt", text: $ttiSuffix, axis: .vertical).lineLimit(1...3)
+                    TextField("Negative prompt", text: $ttiNegative, axis: .vertical).lineLimit(1...3)
+                    Toggle("Remove the background after generating", isOn: $ttiRemoveBackground)
+                    Toggle("Start the 3D generation automatically", isOn: $ttiAutoGenerate)
+                    Text("Describe an object in the image panel; Stable Diffusion 2.1 makes the starting image, then the shape model builds it.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                case .rigging:
+                Section("Rigging") {
+                    Picker("Animation clip", selection: $rigClip) {
+                        ForEach(PoseLibrary.clips, id: \.name) { Text($0.name).tag($0.name) }
+                    }
+                    Picker("Joint names", selection: $rigNaming) {
+                        ForEach(JointNaming.allCases) { Text($0.label).tag($0.rawValue) }
+                    }
+                    Picker("Default pose", selection: $defaultPose) {
+                        ForEach(PoseLibrary.all, id: \.name) { Text($0.name).tag($0.name) }
+                    }
+                    Picker("Weight brush starts as", selection: $weightBrushAdd) { Text("Add").tag(true); Text("Remove").tag(false) }
+                        .pickerStyle(.segmented)
+                    LabeledContent("Arms-out threshold") { slider($rigTPoseReach, 0.3...0.7, step: 0.05, label: String(format: "%.2f × height", rigTPoseReach)) }
+                    LabeledContent("Min. height ÷ width") { slider($rigMinAspect, 1.2...3, step: 0.1, label: String(format: "%.1f", rigMinAspect)) }
+                    LabeledContent("Weight brush size") { slider($weightBrushRadius, 0.02...0.25, step: 0.01, label: String(format: "%.0f%% of height", weightBrushRadius * 100)) }
+                    LabeledContent("Weight brush power") { slider($weightBrushStrength, 0.1...1, step: 0.05, label: String(format: "%.0f%%", weightBrushStrength * 100)) }
+                    LabeledContent("Clip speed") { slider($rigClipSpeed, 0.25...3, step: 0.25, label: String(format: "×%.2f", rigClipSpeed)) }
+                    Text("The rigged GLB export fits a standard humanoid skeleton (works on upright, front-facing figures with arms out or hanging) and embeds this clip. Arms-out threshold: how far the model must reach sideways at shoulder height (as a share of its height) to be fitted as a T-pose. Min. height ÷ width: below this a model with its arms down is rejected as not a standing figure (busts, props). Joint names let Mixamo or Unity animation retarget onto the export by name. Poses can also be baked into the mesh from the mesh-edit popover.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                case .export:
+                Section("Export") {
+                    Toggle("OBJ as quads where triangles pair cleanly", isOn: $exportQuads)
+                    Text("Merges adjacent triangles into quads (best on remeshed models). GLB, STL and PLY stay triangles.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Section("3D printing") {
+                    LabeledContent("3MF longest side") { slider($printSizeMM, 0...400, step: 5, label: printSizeMM == 0 ? "as is" : "\(Int(printSizeMM)) mm") }
+                    Picker("Slicer", selection: $slicerChoice) {
+                        Text("First installed").tag("auto")
+                        ForEach(Slicer.allCases) { Text($0.title + ($0.appURL == nil ? " (not installed)" : "")).tag($0.rawValue) }
+                    }
+                    Text("3MF export scales the model so its longest side is this many millimetres and sets it on the bed (0 keeps the model's own units). \"Open in slicer\" in the export menu sends that 3MF to the chosen slicer.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                case .general:
+                Section("Scenes") {
+                    LabeledContent("Spacing for new objects") {
+                        slider($sceneSpacing, 1.5...6, step: 0.25, label: String(format: "%.2f units", sceneSpacing))
+                    }
+                }
+                Section("Project templates") {
+                    Picker("New projects start from", selection: $defaultTemplate) {
+                        Text("App defaults").tag("none")
+                        ForEach(ProjectTemplate.all()) { Text($0.name).tag($0.name) }
+                    }
+                    ForEach(customTemplates) { t in
+                        LabeledContent(t.name) {
+                            Button("Delete", role: .destructive) {
+                                customTemplates.removeAll { $0.name == t.name }
+                                ProjectTemplate.saveCustom(customTemplates)
+                                if defaultTemplate == t.name { defaultTemplate = "none" }
+                            }
+                        }
+                    }
+                    Text("File ▸ New Project from Template (or the arrow beside + in the sidebar) applies a template once. Save your own from a project's settings with the sidebar menu.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Section("Batch and plugins") {
+                    Toggle("Batch also paints textures", isOn: $batchPaint)
+                    LabeledContent("Plugins") {
+                        Button("Open plugins folder (\(ToolPlugin.load().count) installed)") {
+                            try? FileManager.default.createDirectory(at: ToolPlugin.folder, withIntermediateDirectories: true)
+                            NSWorkspace.shared.open(ToolPlugin.folder)
+                        }
+                    }
+                    Text("Generate ▸ Batch Generate from Images makes one project per image and runs them one at a time. A plugin is a .json file in the plugins folder naming a command to run on the exported model (Model ▸ Tools); see docs/PLUGINS.md.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                }
+                Section {
+                    Button("Reset all tool settings to defaults") { reset() }
+                }
+            }
+            .formStyle(.grouped)
+        }
+        .frame(height: 640)
     }
 
     private func slider(_ value: Binding<Double>, _ range: ClosedRange<Double>, step: Double, label: String) -> some View {

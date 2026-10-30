@@ -51,6 +51,10 @@ struct ContentView: View {
                     }
                     .help("New Project (click the arrow for templates)")
                 }
+                ToolbarItem {
+                    SettingsLink { Label("Settings", systemImage: "gearshape") }
+                        .help("Settings (⌘,)")
+                }
             }
             .overlay {
                 if store.projects.isEmpty {

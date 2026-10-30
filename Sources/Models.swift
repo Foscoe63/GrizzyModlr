@@ -163,7 +163,7 @@ enum QualityPreset: String, CaseIterable, Identifiable {
     }
 
     static let ordered: [QualityPreset] = [.fastest, .fast, .balanced, .high, .max]
-    static let octreeStops = [128, 192, 256, 320, 384, 448, 512]
+    static let octreeStops = [128, 192, 256, 320, 384, 448, 512, 640, 768, 896, 1024, 1280, 1536, 2048]
 }
 
 /// The fully-resolved parameters for one run (from normal preset or advanced

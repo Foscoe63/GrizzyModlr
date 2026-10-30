@@ -253,6 +253,9 @@ final class ProjectStore {
             for name in fileNames(gen) where !stillReferenced.contains(name) {
                 try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
             }
+            if !stillReferenced.contains(gen.meshFileName) {      // cached simplified viewport copy
+                try? FileManager.default.removeItem(at: ViewLOD.previewURL(for: dir.appendingPathComponent(gen.meshFileName)))
+            }
         }
         let removed = removedIDs
         projects[i].generations.removeAll { removed.contains($0.id) }
@@ -498,6 +501,22 @@ final class ProjectStore {
     func setPaintFaces(_ n: Int, for id: Project.ID) {
         guard let i = projects.firstIndex(where: { $0.id == id }) else { return }
         projects[i].paintFaces = n; save()
+    }
+    /// One click for the best practical shape + paint settings (see `MaximumDetail`).
+    func applyMaximumDetail(for id: Project.ID) {
+        guard let i = projects.firstIndex(where: { $0.id == id }) else { return }
+        let shape = MaximumDetail.shape(model: projects[i].shapeModel, steps: projects[i].steps, octree: projects[i].octree)
+        projects[i].advancedMode = true
+        projects[i].quality = .max
+        projects[i].quantization = .full
+        projects[i].steps = shape.steps
+        projects[i].octree = shape.octree
+        let q = PaintQuality.max
+        projects[i].paintAdvanced = true
+        projects[i].paintQuality = q
+        projects[i].paintRes = q.res; projects[i].paintSteps = q.steps; projects[i].paintTex = q.tex
+        projects[i].paintSuperres = q.superres; projects[i].paintFaces = q.faces
+        save()
     }
     func setPaintSeed(_ s: UInt64?, for id: Project.ID) {
         guard let i = projects.firstIndex(where: { $0.id == id }) else { return }

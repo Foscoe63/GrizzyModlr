@@ -12,6 +12,7 @@ struct ProjectDetailView: View {
     @State private var objectLoading = false
     @State private var showSettings = false
     @State private var showHistory = false
+    @State private var showCompare = false
     @State private var showMeshEdit = false
     @State private var flowOverlay: FlowOverlay?
     @State private var rigOverlay: [FlowGuide] = []   // skeleton bones drawn with the guide-line layer
@@ -398,7 +399,12 @@ struct ProjectDetailView: View {
                 }
                 .help("Version history")
                 .popover(isPresented: $showHistory, arrowEdge: .bottom) {
-                    VersionHistoryView(projectID: project.id, onClose: { showHistory = false })
+                    VersionHistoryView(projectID: project.id, onClose: { showHistory = false },
+                                       onCompare: { showHistory = false; showCompare = true })
+                        .environment(store)
+                }
+                .sheet(isPresented: $showCompare) {
+                    CompareGenerationsView(projectID: project.id, onClose: { showCompare = false })
                         .environment(store)
                 }
             }

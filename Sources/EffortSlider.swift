@@ -63,6 +63,12 @@ struct ModelSettingsPopover: View {
 
                 Toggle("Advanced mode", isOn: advancedBinding.animation(.snappy(duration: 0.2)))
                     .toggleStyle(.switch)
+
+                Button { store.applyMaximumDetail(for: projectID) } label: {
+                    Label("Use maximum detail", systemImage: "wand.and.stars")
+                }
+                .controlSize(.small)
+                .help("Shape: top steps, full-precision weights, 768 grid. Paint: Max quality, 4096 texture, 400k triangles, super-resolution.")
             }
         }
         .padding(16)
@@ -107,13 +113,13 @@ struct ModelSettingsPopover: View {
         steppedRow(title: "Weights", value: p.quantization.label, detail: p.quantization.detail,
                    index: quantIndex, count: Quantization.ordered.count, low: "Smaller", high: "Best")
         Divider()
-        valueRow(title: "Denoise steps", value: "\(p.steps)", binding: stepsBinding, range: 4...60,
+        valueRow(title: "Denoise steps", value: "\(p.steps)", binding: stepsBinding, range: 4...150,
                  detail: "More steps = finer shape, slower")
         Divider()
         valueRow(title: "Guidance", value: String(format: "%.1f", p.guidance), binding: guidanceBinding,
                  range: 0...10, detail: "Prompt adherence (CFG)")
         Divider()
-        steppedRow(title: "Resolution", value: "\(p.octree)", detail: "Mesh grid — finer = denser mesh",
+        steppedRow(title: "Resolution", value: "\(p.octree)", detail: DetailEstimate.summary(octree: p.octree).map { "\($0) (rough)" } ?? "Mesh grid — finer = denser mesh",
                    index: octreeIndex, count: QualityPreset.octreeStops.count, low: "Coarse", high: "Fine")
         Divider()
         seedRow(p)
