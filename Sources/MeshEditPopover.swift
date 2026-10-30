@@ -216,6 +216,7 @@ extension MeshEditPopover {
     fileprivate var rigTuning: some View {
         DisclosureGroup("Adjust rig") {
             VStack(alignment: .leading, spacing: 6) {
+                Color.clear.frame(height: 0).onAppear { editRig { _ in } }   // fit once on open: shows the skeleton or the figure warning
                 Button("Show skeleton") { editRig { _ in } }.controlSize(.small)
                 Picker("Joint", selection: $rigJoint) {
                     ForEach(Skeleton.names, id: \.self) { Text($0).tag($0) }
@@ -241,7 +242,7 @@ extension MeshEditPopover {
                 Button {
                     onPaintWeights(WeightBrush(joint: rigJoint, add: brushAdd, radius: Float(brushRadius), strength: Float(brushStrength)))
                 } label: { Label("Paint \(rigJoint) weights on the model", systemImage: "paintbrush.pointed") }
-                    .controlSize(.small)
+                    .controlSize(.small).disabled(rigNote != nil)
                 if !rigConfig.strokes.isEmpty {
                     Text("\(rigConfig.strokes.count) brush stroke\(rigConfig.strokes.count == 1 ? "" : "s")").font(.caption2).foregroundStyle(.secondary)
                 }

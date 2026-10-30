@@ -600,6 +600,7 @@ struct ProjectDetailView: View {
                           texture: nil, editable: !shapeJob.isRunning && sculpt == nil)
             if let brush = paintingWeights {
                 VStack {
+                    Spacer()
                     HStack(spacing: 10) {
                         Image(systemName: "paintbrush.pointed")
                         Text("Painting \(brush.joint) weights (\(brush.add ? "add" : "remove")) · drag on the model · hold ⌥ to orbit").font(.caption)
@@ -610,12 +611,12 @@ struct ProjectDetailView: View {
                     }
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(.ultraThinMaterial, in: Capsule())
-                    Spacer()
                 }
                 .padding(12)
             }
             if drawingGuides {
                 VStack {
+                    Spacer()
                     HStack(spacing: 10) {
                         Image(systemName: "scribble.variable")
                         Text("Drag on the model to draw a flow guide · hold ⌥ to orbit").font(.caption)
@@ -626,7 +627,6 @@ struct ProjectDetailView: View {
                     }
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(.ultraThinMaterial, in: Capsule())
-                    Spacer()
                 }
                 .padding(12)
             }

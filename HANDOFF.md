@@ -119,3 +119,9 @@ The bust (head + torso, h/width ≈ 1.5) is not a figure: the fitted skeleton pu
 GLB checks: `testRiggedGLBInvariants` verifies spec-level structure (accessor ranges, joint indices, weights sum, acyclic nodes, animation counts). ModelIO on this macOS can't import GLB, so there is no outside importer check; run Khronos `gltf-validator` or Blender on a rigged export when available.
 
 Validated the rigged GLBs (Walk, Wave, Arms up on the test figure, Mixamo names) with Khronos `gltf-validator` (npm): 0 errors, 0 warnings, 0 infos after setting `target` on the JOINTS_0/WEIGHTS_0 buffer views. That checks file structure only — not how Blender/Unity animate it, and still not on a real character. Re-run: `TEST_RUNNER_RIG_GLB_OUT=<dir>` with `RigTests/testWriteRiggedGLBForValidation`, then validate the files.
+
+### Live-app click-through (Debug build, computer-use)
+
+Verified in the running app: File ▸ New Project from Template (Maximum detail → qualityRaw/paintQualityRaw max, saved to projects.json); Generate ▸ Batch Generate from Images… and Model ▸ Tools menu items exist; Edit-mesh popover shows the Pose section and "Adjust rig" (joint picker, X/Y/Z, reach, smooth, brush, paint); on the bust the figure warning appears and Paint is disabled (the rig now fits when the section opens); Settings → Tools shows 3D printing, Project templates, Rigging, Batch and plugins, Material regions (UV island padding).
+Fixed from this pass: guide / weight-paint banners moved to the bottom of the pane (their Done button sat under the toolbar's wand button).
+NOT exercised: UV-island checklist (needs a painted version), batch run, a real paint-mode stroke, the template save alert, slicer hand-off. One unexplained blank 3D viewport right after opening/closing Settings with the popover open; re-selecting the project redrew it — not reproduced since. An empty "Untitled 2" test project (Maximum detail template) was left in the bust's project list; delete it.
