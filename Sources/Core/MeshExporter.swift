@@ -2,7 +2,7 @@ import Foundation
 
 /// A user-pickable export format for the generated mesh.
 enum MeshExportFormat: String, CaseIterable, Identifiable {
-    case glb, obj, stl, ply
+    case glb, usdz, obj, stl, ply
 
     var id: String { rawValue }
     var ext: String { rawValue }
@@ -12,6 +12,7 @@ enum MeshExportFormat: String, CaseIterable, Identifiable {
     var menuTitle: String {
         switch self {
         case .glb: return "GLB · 3D / AR / web (single file)"
+        case .usdz: return "USDZ · Apple AR Quick Look"
         case .obj: return "OBJ · mesh + material"
         case .stl: return "STL · geometry (3D printing)"
         case .ply: return "PLY · geometry data"
@@ -21,6 +22,7 @@ enum MeshExportFormat: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .glb: return "shippingbox"
+        case .usdz: return "arkit"
         case .obj: return "cube"
         case .stl: return "printer"
         case .ply: return "point.3.connected.trianglepath.dotted"
@@ -71,6 +73,7 @@ enum MeshExporter {
         case .stl: try encodeSTL(mesh).write(to: dest)
         case .ply: try encodePLY(mesh).write(to: dest)
         case .glb: try encodeGLB(mesh).write(to: dest)
+        case .usdz: try USDZExporter.write(mesh, to: dest)
         case .obj:
             let dir = dest.deletingLastPathComponent()
             let base = dest.deletingPathExtension().lastPathComponent

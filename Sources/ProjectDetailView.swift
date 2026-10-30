@@ -627,7 +627,7 @@ struct ProjectDetailView: View {
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
                     .fixedSize()
-                    .help("Export model (STL, GLB, OBJ, PLY)")
+                    .help("Export model (GLB, USDZ, OBJ, STL, PLY)")
                 }
                 Spacer()
             }

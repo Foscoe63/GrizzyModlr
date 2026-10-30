@@ -1,4 +1,5 @@
 import XCTest
+import SceneKit
 // MeshExporter lives in Sources/Core, compiled into this test bundle — same module.
 
 /// §4.8 export flow: all four formats end-to-end against the app's binary
@@ -260,6 +261,18 @@ final class MeshExporterTests: XCTestCase {
         // MR bufferView is 4-aligned (PNG lengths aren't multiples of 4).
         let mrBV = try XCTUnwrap(images[1]["bufferView"] as? Int)
         XCTAssertEqual(try XCTUnwrap(bufferViews[mrBV]["byteOffset"] as? Int) % 4, 0)
+    }
+
+    // MARK: - USDZ
+
+    func testUSDZExportsAndReloads() throws {
+        let painted = try writeMeshFile(named: "u.tmesh", withUVs: true)
+        let tex = try writePNG(named: "u_texture.png", Self.tinyPNG)
+        let dest = dir.appendingPathComponent("u.usdz")
+        try MeshExporter.export(meshURL: painted, texture: tex, format: .usdz, to: dest)
+        let scene = try SCNScene(url: dest, options: nil)
+        let node = try XCTUnwrap(scene.rootNode.childNodes(passingTest: { n, _ in n.geometry != nil }).first)
+        XCTAssertGreaterThan(node.geometry?.elements.first?.primitiveCount ?? 0, 0)
     }
 
     /// End-to-end sweep: every format exports from real .mesh/.tmesh files and the
