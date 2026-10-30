@@ -42,6 +42,16 @@ final class RigTests: XCTestCase {
         XCTAssertNil(Skeleton.fit(to: []))
     }
 
+    func testBustLikeShapeIsRejected() {
+        // Wide, short block with arms not out: head-and-shoulders proportions (h/width 1.5).
+        var pos: [SIMD3<Float>] = []
+        for x in stride(from: Float(-0.65), through: 0.65, by: 0.13) { for y in stride(from: Float(-1), through: 1, by: 0.2) {
+            for z in [Float(-0.3), 0.3] { pos.append(SIMD3(x, y, z)) } } }
+        XCTAssertNil(Skeleton.fit(to: pos))
+        let r = MeshOps.apply(.pose(name: "Wave"), positions: pos, faces: [])
+        XCTAssertFalse(r.changed)
+    }
+
     func testWeightsAreNormalizedAndArmFollowsShoulder() throws {
         let f = figure()
         let sk = try XCTUnwrap(Skeleton.fit(to: f.positions))
@@ -114,5 +124,40 @@ final class RigTests: XCTestCase {
         let bufLen = try XCTUnwrap(((json["buffers"] as? [[String: Any]])?.first?["byteLength"]) as? Int)
         for v in views { XCTAssertLessThanOrEqual((v["byteOffset"] as? Int ?? 0) + (v["byteLength"] as! Int), bufLen) }
         XCTAssertEqual(glb.count % 4, 0)
+    }
+
+    /// Opt-in: RIG_MESH=<.mesh> [RIG_OUT=<dir>] poses a real scan and writes front-view SVGs of the skeleton and poses.
+    func testRealScanRig() throws {
+        guard let path = ProcessInfo.processInfo.environment["RIG_MESH"] else { throw XCTSkip("set RIG_MESH") }
+        let mesh = try XCTUnwrap(MeshDecimator.parse(Data(contentsOf: URL(fileURLWithPath: path))))
+        guard let sk = Skeleton.fit(to: mesh.positions) else { print("RIG rejected: not a standing figure"); return }
+        let w = SkinWeights.compute(positions: mesh.positions, skeleton: sk)
+        let lo = mesh.positions.reduce(SIMD3<Float>(repeating: .infinity), simd_min), hi = mesh.positions.reduce(SIMD3<Float>(repeating: -.infinity), simd_max)
+        print("RIG bbox", lo, hi, "verts", mesh.positions.count)
+        for name in ["wristL", "ankleL", "headTop"] { print("RIG joint", name, sk.joints[sk.index(of: name)!].position) }
+        var share = [Int](repeating: 0, count: sk.joints.count)
+        for j in w.joints { share[Int(j.x)] += 1 }
+        print("RIG dominant joint share", zip(sk.joints.map(\.name), share).filter { $0.1 > 0 }.map { "\($0.0)=\($0.1)" }.joined(separator: " "))
+        let out = URL(fileURLWithPath: ProcessInfo.processInfo.environment["RIG_OUT"] ?? NSTemporaryDirectory())
+        let h = hi.y - lo.y, scale: Float = 400 / h
+        func svg(_ pts: [SIMD3<Float>], _ file: String) throws {
+            var s = "<svg xmlns='http://www.w3.org/2000/svg' width='900' height='460' viewBox='-450 -20 900 460'><rect x='-450' y='-20' width='900' height='460' fill='#ffffff'/>"
+            for (i, p) in pts.enumerated() where i % 3 == 0 {
+                s += "<circle cx='\((p.x - (lo.x + hi.x) / 2) * scale)' cy='\((hi.y - p.y) * scale)' r='1' fill='#4477aa'/>"
+            }
+            for j in sk.joints where j.parent >= 0 {
+                let a = sk.joints[j.parent].position, b = j.position
+                s += "<line x1='\((a.x - (lo.x + hi.x) / 2) * scale)' y1='\((hi.y - a.y) * scale)' x2='\((b.x - (lo.x + hi.x) / 2) * scale)' y2='\((hi.y - b.y) * scale)' stroke='#cc3333' stroke-width='2'/>"
+            }
+            s += "</svg>"
+            try s.write(to: out.appendingPathComponent(file), atomically: true, encoding: .utf8)
+        }
+        try svg(mesh.positions, "rig-rest.svg")
+        for name in ["Arms down", "Wave", "Walk"] {
+            let posed = PoseLibrary.named(name)!.apply(to: mesh.positions, skeleton: sk, weights: w, height: h)
+            XCTAssertTrue(posed.allSatisfy { $0.x.isFinite })
+            try svg(posed, "rig-\(name.replacingOccurrences(of: " ", with: "-")).svg")
+        }
+        print("RIG wrote to", out.path)
     }
 }

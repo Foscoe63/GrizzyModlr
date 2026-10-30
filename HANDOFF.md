@@ -103,3 +103,7 @@ The Python reference scripts and harness packages were in the session scratchpad
 - `RigGLB` (RigGLB.swift) post-processes `encodeGLB`: skin, JOINTS_0/WEIGHTS_0, IBMs, rotation animation. Export format "GLB · rigged humanoid + animation clip"; clip + speed in Settings → Rigging.
 - **Verified only on a synthetic box-figure** (tests/RigTests) — not on a real character scan, not loaded in Blender/Unity. Arms touching the torso share weights; non-humanoids fit badly.
 - **Not done:** weight painting, hand-adjusting joints, retargeting, FBX animation, project templates.
+
+### Rig on the real bust scan (result)
+
+The bust (head + torso, h/width ≈ 1.5) is not a figure: the fitted skeleton put hips/legs inside the torso and "Arms down" changed nothing visible. `Skeleton.fit` now returns nil for non-T-pose shapes with h/width < 2, so the pose edit says "couldn't fit a skeleton" and the rigged GLB export throws, instead of producing nonsense. The rig has therefore still never run on a real full-body character — needs one to validate. Opt-in test: `TEST_RUNNER_RIG_MESH=<.mesh> [TEST_RUNNER_RIG_OUT=<dir>]` (the dir must be writable by the test sandbox, e.g. the scratchpad, not docs/).

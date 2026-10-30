@@ -53,6 +53,9 @@ struct Skeleton: Equatable {
         let shoulderBand = positions.filter { abs($0.y - y(0.80)) < h * 0.05 }
         let reach = shoulderBand.map { abs($0.x - cx) }.max() ?? h * 0.2
         let tPose = reach > h * 0.45
+        // A standing figure with its arms down is tall and narrow; a bust, a prop or a creature
+        // is not, and a humanoid skeleton squashed into it only produces nonsense poses.
+        if !tPose, h / max(hi.x - lo.x, 1e-6) < 2.0 { return nil }
         let shoulderX = h * 0.11
         let wristX = tPose ? max(shoulderX * 2.5, reach * 0.9) : shoulderX + h * 0.04
         let elbowX = shoulderX + (wristX - shoulderX) * 0.5
