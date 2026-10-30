@@ -245,6 +245,11 @@ enum FlowRemesh {
         // 4. Fill small gaps; give up on large ones.
         var fill: [SIMD3<UInt32>] = []
         var next: [UInt32: [UInt32]] = [:]
+        let basePositions = cpos.count
+        for round in 0..<6 {
+        fill = []; next = [:]
+        cpos.removeSubrange(basePositions...)
+        directed = Set(quads.flatMap { q in [dkey(q.x, q.y), dkey(q.y, q.z), dkey(q.z, q.w), dkey(q.w, q.x)] })
         for q in quads {
             for (a, b) in [(q.x, q.y), (q.y, q.z), (q.z, q.w), (q.w, q.x)] where !directed.contains(dkey(b, a)) {
                 next[a, default: []].append(b)
@@ -284,6 +289,22 @@ enum FlowRemesh {
                     used.insert(dkey(cur, nxt)); path.append(nxt)
                 }
             }
+        }
+        // Capping can reuse a directed edge where loops touch; drop the quads on such edges and cap again.
+        var count: [UInt64: Int] = [:]
+        for q in quads { for (x, y) in [(q.x, q.y), (q.y, q.z), (q.z, q.w), (q.w, q.x)] { count[dkey(x, y), default: 0] += 1 } }
+        for t in fill { for (x, y) in [(t.x, t.y), (t.y, t.z), (t.z, t.x)] { count[dkey(x, y), default: 0] += 1 } }
+        let bad = Set(count.filter { $0.value > 1 }.keys)
+        trace?("round \(round): duplicate edges \(bad.count)")
+        if bad.isEmpty || round == 5 { break }
+        // Fill-only duplicates can't be cured by removing quads on the edge itself, so widen to its endpoints
+        // on later rounds.
+        var badVerts = Set<UInt32>()
+        if round >= 1 { for k in bad { badVerts.insert(UInt32(k >> 32)); badVerts.insert(UInt32(k & 0xFFFF_FFFF)) } }
+        quads.removeAll { q in
+            [(q.x, q.y), (q.y, q.z), (q.z, q.w), (q.w, q.x)].contains { bad.contains(dkey($0.0, $0.1)) }
+                || badVerts.contains(q.x) || badVerts.contains(q.y) || badVerts.contains(q.z) || badVerts.contains(q.w)
+        }
         }
         trace?("boundary half-edges \(next.values.reduce(0) { $0 + $1.count }), fill tris \(fill.count)")
         // Drop nodes no face uses.
