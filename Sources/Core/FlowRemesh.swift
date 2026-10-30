@@ -7,6 +7,8 @@ import simd
 /// result isn't a closed manifold, so callers can fall back to the axis-aligned remesh.
 enum FlowRemesh {
     /// Diagnostics hook for tests and smoke runs.
+    /// Debug: cluster centres and lattice edges of the last extraction.
+    nonisolated(unsafe) static var debugGraph: (points: [SIMD3<Float>], edges: [(Int, Int)])?
     nonisolated(unsafe) static var trace: ((String) -> Void)?
 
     struct Options {
@@ -43,9 +45,13 @@ enum FlowRemesh {
             let r = MeshDecimator.decimate(positions: positions, faces: faces, faceBudget: min(max(wanted, 2000), 80_000))
             if !r.faces.isEmpty { wp = r.positions; wf = r.faces }
         }
+        // Uniform sampling: flat areas keep very long triangles after decimation, and there the
+        // lattice neighbours are too far apart to ever become edges. Split only the long edges.
         var guardRounds = 0
-        while MeshTopology(positions: wp, faces: wf).averageEdgeLength > rho / 2.4, guardRounds < 3, wf.count < 200_000 {
-            (wp, wf) = subdivide(wp, wf); guardRounds += 1
+        while guardRounds < 8, wf.count < 300_000 {
+            let (np, nf, split) = refineLongEdges(wp, wf, maxLength: rho / 1.6)
+            guard split else { break }
+            (wp, wf) = (np, nf); guardRounds += 1
         }
 
         let topology = MeshTopology(positions: wp, faces: wf)
@@ -196,6 +202,7 @@ enum FlowRemesh {
                 }
             }
         }
+        if trace != nil { debugGraph = (cpos, (0..<m).flatMap { c in nbrs[c].filter { $0 > c }.map { (c, $0) } }) }
         trace?("lattice edges \(nbrs.reduce(0) { $0 + $1.count } / 2), nodes with >=3 nbrs \(nbrs.filter { $0.count >= 3 }.count)")
         // 3. Quads from 4-cycles around each node, best-fitting first.
         struct Candidate { var quad: SIMD4<UInt32>; var score: Float }
@@ -358,6 +365,48 @@ enum FlowRemesh {
             guard count[UInt64(b) << 32 | UInt64(a)] == 1 else { return false }
         }
         return !count.isEmpty
+    }
+
+    /// Splits every edge longer than `maxLength` at its midpoint (triangles are re-cut consistently).
+    static func refineLongEdges(_ p: [SIMD3<Float>], _ f: [SIMD3<UInt32>], maxLength: Float)
+        -> ([SIMD3<Float>], [SIMD3<UInt32>], Bool) {
+        var pos = p, mid: [UInt64: UInt32] = [:]
+        func key(_ a: UInt32, _ b: UInt32) -> UInt64 { UInt64(min(a, b)) << 32 | UInt64(max(a, b)) }
+        func long(_ a: UInt32, _ b: UInt32) -> Bool { simd_distance(p[Int(a)], p[Int(b)]) > maxLength }
+        func midpoint(_ a: UInt32, _ b: UInt32) -> UInt32 {
+            let k = key(a, b)
+            if let m = mid[k] { return m }
+            pos.append((pos[Int(a)] + pos[Int(b)]) / 2)
+            mid[k] = UInt32(pos.count - 1)
+            return mid[k]!
+        }
+        var out: [SIMD3<UInt32>] = []
+        var any = false
+        for t in f {
+            var (x, y, z) = (t.x, t.y, t.z)
+            var s0 = long(x, y), s1 = long(y, z), s2 = long(z, x)
+            let n = (s0 ? 1 : 0) + (s1 ? 1 : 0) + (s2 ? 1 : 0)
+            if n == 0 { out.append(t); continue }
+            any = true
+            if n == 1 {
+                while !s0 { (x, y, z) = (y, z, x); (s0, s1, s2) = (s1, s2, s0) }
+                let m = midpoint(x, y)
+                out += [[x, m, z], [m, y, z]]
+            } else if n == 2 {
+                while s2 { (x, y, z) = (y, z, x); (s0, s1, s2) = (s1, s2, s0) }   // unsplit edge is z→x
+                let m1 = midpoint(x, y), m2 = midpoint(y, z)
+                out.append([m1, y, m2])
+                if simd_distance(pos[Int(x)], pos[Int(m2)]) <= simd_distance(pos[Int(m1)], pos[Int(z)]) {
+                    out += [[x, m1, m2], [x, m2, z]]
+                } else {
+                    out += [[x, m1, z], [m1, m2, z]]
+                }
+            } else {
+                let a = midpoint(x, y), b = midpoint(y, z), c = midpoint(z, x)
+                out += [[x, a, c], [y, b, a], [z, c, b], [a, b, c]]
+            }
+        }
+        return (pos, out, any)
     }
 
     static func subdivide(_ p: [SIMD3<Float>], _ f: [SIMD3<UInt32>]) -> ([SIMD3<Float>], [SIMD3<UInt32>]) {
