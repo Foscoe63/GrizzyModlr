@@ -31,10 +31,10 @@ struct MeshEditPopover: View {
     @State private var remeshRes: Double = ToolDefaults.remeshResolution()
     @State private var lodText: String = UserDefaults.standard.string(forKey: ToolDefaults.Key.lodLevels) ?? ToolDefaults.fallbackLODLevels
     @State private var busy = false
-    @State private var poseName = PoseLibrary.all[1].name
+    @State private var poseName = PoseLibrary.named(ToolDefaults.defaultPose())?.name ?? PoseLibrary.all[1].name
     @State private var rigJoint = "wristL"
     @State private var rigNote: String?
-    @State private var brushAdd = true
+    @State private var brushAdd = ToolDefaults.weightBrushAdd()
     @State private var brushRadius = ToolDefaults.weightBrushRadius()
     @State private var brushStrength = ToolDefaults.weightBrushStrength()
     @State private var booleanOp: BooleanOp = .subtract

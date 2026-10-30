@@ -91,4 +91,21 @@ final class ToolDefaultsTests: XCTestCase {
         XCTAssertEqual(ToolDefaults.tsrForegroundRatio(d), 0.85)
         XCTAssertTrue(ToolDefaults.tsrKeepLargest(d))
     }
+
+    func testTuningDefaultsAndOverrides() {
+        let d = suite()
+        XCTAssertEqual(ToolDefaults.flowFieldIterations(d), 400)
+        XCTAssertEqual(ToolDefaults.flowPositionIterations(d), 120)
+        XCTAssertEqual(ToolDefaults.flowMaxHoleEdges(d), 8)
+        XCTAssertEqual(ToolDefaults.rigTPoseReach(d), 0.45, accuracy: 1e-6)
+        XCTAssertEqual(ToolDefaults.rigMinAspect(d), 2.0, accuracy: 1e-6)
+        XCTAssertEqual(ToolDefaults.defaultPose(d), "Arms down")
+        XCTAssertTrue(ToolDefaults.weightBrushAdd(d))
+        d.set(200.0, forKey: ToolDefaults.Key.flowFieldIterations)
+        d.set(false, forKey: ToolDefaults.Key.weightBrushAdd)
+        d.set("Wave", forKey: ToolDefaults.Key.defaultPose)
+        XCTAssertEqual(ToolDefaults.flowFieldIterations(d), 200)
+        XCTAssertFalse(ToolDefaults.weightBrushAdd(d))
+        XCTAssertEqual(ToolDefaults.defaultPose(d), "Wave")
+    }
 }

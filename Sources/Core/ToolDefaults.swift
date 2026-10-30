@@ -39,6 +39,13 @@ enum ToolDefaults {
         static let rigClipSpeed = "tools.rigClipSpeed"
         static let rigNaming = "tools.rigNaming"
         static let weightBrushRadius = "tools.weightBrushRadius"
+        static let flowFieldIterations = "tools.flowFieldIterations"
+        static let flowPositionIterations = "tools.flowPositionIterations"
+        static let flowMaxHoleEdges = "tools.flowMaxHoleEdges"
+        static let rigTPoseReach = "tools.rigTPoseReach"
+        static let rigMinAspect = "tools.rigMinAspect"
+        static let defaultPose = "tools.defaultPose"
+        static let weightBrushAdd = "tools.weightBrushAdd"
         static let weightBrushStrength = "tools.weightBrushStrength"
         static let tsrThreshold = "tools.tsrThreshold"
         static let tsrForegroundRatio = "tools.tsrForegroundRatio"
@@ -80,6 +87,12 @@ enum ToolDefaults {
     static let fallbackRigClip = "Walk"
     static let fallbackRigNaming = "generic"
     static let fallbackWeightBrushRadius = 0.08
+    static let fallbackFlowFieldIterations = 400.0
+    static let fallbackFlowPositionIterations = 120.0
+    static let fallbackFlowMaxHoleEdges = 8.0
+    static let fallbackRigTPoseReach = 0.45
+    static let fallbackRigMinAspect = 2.0
+    static let fallbackDefaultPose = "Arms down"
     static let fallbackWeightBrushStrength = 0.6
     static let fallbackRigClipSpeed = 1.0
     static let fallbackTSRThreshold = 25.0
@@ -127,6 +140,15 @@ enum ToolDefaults {
     static func slicer(_ d: UserDefaults = .standard) -> String { d.string(forKey: Key.slicer) ?? fallbackSlicer }
     static func batchPaint(_ d: UserDefaults = .standard) -> Bool { d.bool(forKey: Key.batchPaint) }
     static func rigClip(_ d: UserDefaults = .standard) -> String { d.string(forKey: Key.rigClip) ?? fallbackRigClip }
+    static func flowFieldIterations(_ d: UserDefaults = .standard) -> Int { Int(double(Key.flowFieldIterations, fallbackFlowFieldIterations, d)) }
+    static func flowPositionIterations(_ d: UserDefaults = .standard) -> Int { Int(double(Key.flowPositionIterations, fallbackFlowPositionIterations, d)) }
+    static func flowMaxHoleEdges(_ d: UserDefaults = .standard) -> Int { Int(double(Key.flowMaxHoleEdges, fallbackFlowMaxHoleEdges, d)) }
+    /// Sideways reach (fraction of height) at shoulder level above which a model counts as arms-out.
+    static func rigTPoseReach(_ d: UserDefaults = .standard) -> Float { Float(double(Key.rigTPoseReach, fallbackRigTPoseReach, d)) }
+    /// Minimum height ÷ width for a non-T-pose model to be treated as a standing figure.
+    static func rigMinAspect(_ d: UserDefaults = .standard) -> Float { Float(double(Key.rigMinAspect, fallbackRigMinAspect, d)) }
+    static func defaultPose(_ d: UserDefaults = .standard) -> String { d.string(forKey: Key.defaultPose) ?? fallbackDefaultPose }
+    static func weightBrushAdd(_ d: UserDefaults = .standard) -> Bool { d.object(forKey: Key.weightBrushAdd) as? Bool ?? true }
     static func weightBrushRadius(_ d: UserDefaults = .standard) -> Double { double(Key.weightBrushRadius, fallbackWeightBrushRadius, d) }
     static func weightBrushStrength(_ d: UserDefaults = .standard) -> Double { double(Key.weightBrushStrength, fallbackWeightBrushStrength, d) }
     static func rigNaming(_ d: UserDefaults = .standard) -> String { d.string(forKey: Key.rigNaming) ?? fallbackRigNaming }

@@ -317,6 +317,13 @@ struct ToolSettingsView: View {
     @State private var customTemplates = ProjectTemplate.custom()
     @AppStorage(ToolDefaults.Key.rigClip) private var rigClip = ToolDefaults.fallbackRigClip
     @AppStorage(ToolDefaults.Key.rigNaming) private var rigNaming = ToolDefaults.fallbackRigNaming
+    @AppStorage(ToolDefaults.Key.flowFieldIterations) private var flowFieldIterations = ToolDefaults.fallbackFlowFieldIterations
+    @AppStorage(ToolDefaults.Key.flowPositionIterations) private var flowPositionIterations = ToolDefaults.fallbackFlowPositionIterations
+    @AppStorage(ToolDefaults.Key.flowMaxHoleEdges) private var flowMaxHoleEdges = ToolDefaults.fallbackFlowMaxHoleEdges
+    @AppStorage(ToolDefaults.Key.rigTPoseReach) private var rigTPoseReach = ToolDefaults.fallbackRigTPoseReach
+    @AppStorage(ToolDefaults.Key.rigMinAspect) private var rigMinAspect = ToolDefaults.fallbackRigMinAspect
+    @AppStorage(ToolDefaults.Key.defaultPose) private var defaultPose = ToolDefaults.fallbackDefaultPose
+    @AppStorage(ToolDefaults.Key.weightBrushAdd) private var weightBrushAdd = true
     @AppStorage(ToolDefaults.Key.weightBrushRadius) private var weightBrushRadius = ToolDefaults.fallbackWeightBrushRadius
     @AppStorage(ToolDefaults.Key.weightBrushStrength) private var weightBrushStrength = ToolDefaults.fallbackWeightBrushStrength
     @AppStorage(ToolDefaults.Key.rigClipSpeed) private var rigClipSpeed = ToolDefaults.fallbackRigClipSpeed
@@ -414,7 +421,10 @@ struct ToolSettingsView: View {
                 LabeledContent("Crease angle") { slider($flowFeatureAngle, 10...80, step: 5, label: "\(Int(flowFeatureAngle))°") }
                 LabeledContent("Guide strength") { slider($flowGuideStrength, 5...100, step: 5, label: "\(Int(flowGuideStrength))") }
                 LabeledContent("Flow remesh quads") { slider($flowTargetQuads, 500...8000, step: 500, label: "\(Int(flowTargetQuads))") }
-                Text("Edges sharper than this are treated as creases the flow lines follow. Used by the flow field view and flow remesh. Guide strength is how hard drawn guide curves pull the flow compared with creases.")
+                LabeledContent("Field smoothing passes") { slider($flowFieldIterations, 50...1000, step: 50, label: "\(Int(flowFieldIterations))") }
+                LabeledContent("Lattice passes") { slider($flowPositionIterations, 20...400, step: 20, label: "\(Int(flowPositionIterations))") }
+                LabeledContent("Largest gap to fill") { slider($flowMaxHoleEdges, 4...24, step: 1, label: "\(Int(flowMaxHoleEdges)) edges") }
+                Text("More passes give straighter, more regular rows but take longer. Gaps up to the chosen size are closed with a few triangles; larger ones get quads or a fan. Edges sharper than this are treated as creases the flow lines follow. Used by the flow field view and flow remesh. Guide strength is how hard drawn guide curves pull the flow compared with creases.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("3D printing") {
@@ -450,10 +460,17 @@ struct ToolSettingsView: View {
                 Picker("Joint names", selection: $rigNaming) {
                     ForEach(JointNaming.allCases) { Text($0.label).tag($0.rawValue) }
                 }
+                Picker("Default pose", selection: $defaultPose) {
+                    ForEach(PoseLibrary.all, id: \.name) { Text($0.name).tag($0.name) }
+                }
+                Picker("Weight brush starts as", selection: $weightBrushAdd) { Text("Add").tag(true); Text("Remove").tag(false) }
+                    .pickerStyle(.segmented)
+                LabeledContent("Arms-out threshold") { slider($rigTPoseReach, 0.3...0.7, step: 0.05, label: String(format: "%.2f × height", rigTPoseReach)) }
+                LabeledContent("Min. height ÷ width") { slider($rigMinAspect, 1.2...3, step: 0.1, label: String(format: "%.1f", rigMinAspect)) }
                 LabeledContent("Weight brush size") { slider($weightBrushRadius, 0.02...0.25, step: 0.01, label: String(format: "%.0f%% of height", weightBrushRadius * 100)) }
                 LabeledContent("Weight brush power") { slider($weightBrushStrength, 0.1...1, step: 0.05, label: String(format: "%.0f%%", weightBrushStrength * 100)) }
                 LabeledContent("Clip speed") { slider($rigClipSpeed, 0.25...3, step: 0.25, label: String(format: "×%.2f", rigClipSpeed)) }
-                Text("The rigged GLB export fits a standard humanoid skeleton (works on upright, front-facing figures with arms out or hanging) and embeds this clip. Joint names let Mixamo or Unity animation retarget onto the export by name. Poses can also be baked into the mesh from the mesh-edit popover.")
+                Text("The rigged GLB export fits a standard humanoid skeleton (works on upright, front-facing figures with arms out or hanging) and embeds this clip. Arms-out threshold: how far the model must reach sideways at shoulder height (as a share of its height) to be fitted as a T-pose. Min. height ÷ width: below this a model with its arms down is rejected as not a standing figure (busts, props). Joint names let Mixamo or Unity animation retarget onto the export by name. Poses can also be baked into the mesh from the mesh-edit popover.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Batch and plugins") {
@@ -525,6 +542,10 @@ struct ToolSettingsView: View {
         defaultTemplate = "none"
         rigClip = ToolDefaults.fallbackRigClip; rigClipSpeed = ToolDefaults.fallbackRigClipSpeed; rigNaming = ToolDefaults.fallbackRigNaming
         weightBrushRadius = ToolDefaults.fallbackWeightBrushRadius; weightBrushStrength = ToolDefaults.fallbackWeightBrushStrength
+        flowFieldIterations = ToolDefaults.fallbackFlowFieldIterations; flowPositionIterations = ToolDefaults.fallbackFlowPositionIterations
+        flowMaxHoleEdges = ToolDefaults.fallbackFlowMaxHoleEdges
+        rigTPoseReach = ToolDefaults.fallbackRigTPoseReach; rigMinAspect = ToolDefaults.fallbackRigMinAspect
+        defaultPose = ToolDefaults.fallbackDefaultPose; weightBrushAdd = true
         tsrThreshold = ToolDefaults.fallbackTSRThreshold; tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
         tsrKeepLargest = true
         reliefDepth = ToolDefaults.fallbackReliefDepth; reliefResolution = ToolDefaults.fallbackReliefResolution

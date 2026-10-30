@@ -118,10 +118,10 @@ struct Skeleton: Equatable {
         // Arm reach: how far the model extends sideways at shoulder height.
         let shoulderBand = positions.filter { abs($0.y - y(0.80)) < h * 0.05 }
         let reach = shoulderBand.map { abs($0.x - cx) }.max() ?? h * 0.2
-        let tPose = reach > h * 0.45
+        let tPose = reach > h * ToolDefaults.rigTPoseReach()
         // A standing figure with its arms down is tall and narrow; a bust, a prop or a creature
         // is not, and a humanoid skeleton squashed into it only produces nonsense poses.
-        if !tPose, h / max(hi.x - lo.x, 1e-6) < 2.0 { return nil }
+        if !tPose, h / max(hi.x - lo.x, 1e-6) < ToolDefaults.rigMinAspect() { return nil }
         let shoulderX = h * 0.11
         // Arms hanging: how far out the model reaches around hip height tells how splayed they are.
         let hipBand = positions.filter { abs($0.y - y(0.50)) < h * 0.04 }

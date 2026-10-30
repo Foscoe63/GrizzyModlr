@@ -273,6 +273,8 @@ enum MeshOps {
                           note: "\(faces.count) → \(r.faces.count) triangles, \(share)% pair into quads", changed: true)
         case .flowRemesh(let target, let angle, let fallback, let guides, let strength):
             var o = FlowRemesh.Options()
+            o.fieldIterations = ToolDefaults.flowFieldIterations(); o.positionIterations = ToolDefaults.flowPositionIterations()
+            o.maxHoleEdges = ToolDefaults.flowMaxHoleEdges()
             o.targetQuads = target; o.featureAngle = angle; o.guides = guides; o.guideStrength = strength
             if let r = FlowRemesh.remesh(positions: positions, faces: faces, options: o) {
                 let pct = Int((Float(r.quads.count * 2) / Float(max(r.faces.count, 1)) * 100).rounded())
