@@ -243,16 +243,28 @@ enum MeshBoolean {
     /// triangles (feature-preserving only down to a voxel), lightly relaxed to remove the
     /// staircase. Returns nil when the sampled field has no surface (e.g. an open mesh).
     static func remesh(positions: [SIMD3<Float>], faces: [SIMD3<UInt32>], resolution: Int,
-                       relaxIterations: Int = 3) -> (positions: [SIMD3<Float>], faces: [SIMD3<UInt32>])? {
+                       relaxIterations: Int = 3, sharp: Bool = false) -> (positions: [SIMD3<Float>], faces: [SIMD3<UInt32>])? {
         guard !positions.isEmpty, !faces.isEmpty else { return nil }
         var lo = SIMD3<Float>(repeating: .infinity), hi = SIMD3<Float>(repeating: -.infinity)
         for q in positions { lo = simd_min(lo, q); hi = simd_max(hi, q) }
         let g = grid(lo: lo, hi: hi, resolution: resolution)
         let field = meshField(positions: positions, faces: faces, grid: g)
-        let m = surfaceNets(field, grid: g)
+        let m = surfaceNets(field, grid: g, sharp: sharp)
         guard m.faces.count > 8 else { return nil }
-        let relaxed = MeshOps.smooth(positions: m.positions, faces: m.faces, iterations: relaxIterations)
+        // Relaxing would round the creases the sharp placement just found.
+        let relaxed = sharp ? m.positions : MeshOps.smooth(positions: m.positions, faces: m.faces, iterations: relaxIterations)
         return (relaxed, m.faces)
+    }
+
+    /// Remesh in the model's own axis frame (see `MeshFrame`): the grid is rotated to the frame,
+    /// so rows of quads run along the model's flats and edges, and creases stay sharp.
+    static func quadRemesh(positions: [SIMD3<Float>], faces: [SIMD3<UInt32>], resolution: Int)
+        -> (positions: [SIMD3<Float>], faces: [SIMD3<UInt32>])? {
+        let frame = MeshFrame.bestFrame(positions: positions, faces: faces)
+        let toFrame = frame.transpose
+        let local = positions.map { toFrame * $0 }
+        guard let m = remesh(positions: local, faces: faces, resolution: resolution, sharp: true) else { return nil }
+        return (m.positions.map { frame * $0 }, m.faces)
     }
 
     // MARK: entry points

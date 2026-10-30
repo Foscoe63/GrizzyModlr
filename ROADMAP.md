@@ -155,4 +155,4 @@ Comprehensive plan to evolve from image→3D to a full local 3D creation studio.
 
 ## Status notes (2026-10-30)
 
-Done: Phase 1, Phase 2 except auto-retopology to true quads and edge-flow editing, plus USDZ export. Partial: AI Fill uses SD 2.1 base blended diffusion (not a dedicated inpainting model), material editor can be limited to one texture color (no island or painted regions), booleans are voxel-based (sharp-edge placement, up to 384 voxels). Not started: rigging, FBX, 3MF, slicer integration, batch, templates, plugins.
+Done: Phase 1, Phase 2 except true flow-field retopology and edge-flow editing (axis-aligned quad remesh is in), plus USDZ export. Partial: AI Fill uses SD 2.1 base blended diffusion (not a dedicated inpainting model), material editor can be limited to one texture color (no island or painted regions), booleans are voxel-based (sharp-edge placement, up to 384 voxels). Not started: rigging, FBX, 3MF, slicer integration, batch, templates, plugins.

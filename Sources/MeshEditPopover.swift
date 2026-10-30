@@ -184,6 +184,7 @@ extension MeshEditPopover {
             }
             Slider(value: $remeshRes, in: 48...320, step: 16)
             action("Remesh evenly", "square.grid.3x3") { .remesh(resolution: Int(remeshRes)) }
+            action("Quad remesh (aligned)", "square.grid.2x2") { .quadRemesh(resolution: Int(remeshRes)) }
             HStack(spacing: 6) {
                 Text("LOD").font(.caption)
                 TextField("50, 25, 10", text: $lodText).textFieldStyle(.roundedBorder).controlSize(.small)

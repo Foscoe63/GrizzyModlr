@@ -11,6 +11,8 @@ enum MeshEdit: Equatable {
     case symmetrize(axis: SymmetryAxis, keepPositive: Bool)
     /// Rebuilds the surface as a clean, evenly sized mesh at `resolution` voxels.
     case remesh(resolution: Int)
+    /// Remesh in the model's own axis frame with sharp edges kept, giving quad rows along its flats.
+    case quadRemesh(resolution: Int)
 
     var label: String {
         switch self {
@@ -19,6 +21,7 @@ enum MeshEdit: Equatable {
         case .fillHoles: return "holes filled"
         case .symmetrize(let axis, let positive): return "mirrored \(positive ? "+" : "−")\(axis.rawValue.uppercased()) half"
         case .remesh(let n): return "remeshed at \(n)"
+        case .quadRemesh(let n): return "quad remeshed at \(n)"
         }
     }
 }
@@ -255,6 +258,14 @@ enum MeshOps {
                 return Result(positions: positions, faces: faces, note: "the mesh isn't closed enough to remesh", changed: false)
             }
             return Result(positions: r.positions, faces: r.faces, note: "\(faces.count) → \(r.faces.count) triangles", changed: true)
+        case .quadRemesh(let resolution):
+            guard let r = MeshBoolean.quadRemesh(positions: positions, faces: faces, resolution: resolution) else {
+                return Result(positions: positions, faces: faces, note: "the mesh isn't closed enough to remesh", changed: false)
+            }
+            let pairs = QuadPairing.pair(positions: r.positions, faces: r.faces)
+            let share = r.faces.isEmpty ? 0 : Int((Float(pairs.quads.count * 2) / Float(r.faces.count) * 100).rounded())
+            return Result(positions: r.positions, faces: r.faces,
+                          note: "\(faces.count) → \(r.faces.count) triangles, \(share)% pair into quads", changed: true)
         case .fillHoles(let maxEdges):
             let r = fillHoles(positions: positions, faces: faces, maxEdges: maxEdges)
             return Result(positions: r.positions, faces: r.faces,
