@@ -78,6 +78,7 @@ struct ProjectDetailView: View {
         .toolbar {
             if isEditingMask { editToolbar } else { normalToolbar }
         }
+        .focusedSceneValue(\.projectActions, projectActions)
     }
 
     /// Show the paint strip while painting, on a paint error, or when viewing a paint
@@ -254,6 +255,29 @@ struct ProjectDetailView: View {
 
     /// The textured mesh + maps to export from the paint viewport (nil while painting).
     /// `mr` is set only for a PBR version → the GLB carries both textures.
+    private var projectActions: ProjectActions {
+        let paint = paintExportSource
+        let shapeMesh = shapeJob.isRunning ? nil : store.shapeMeshURL(for: project)
+        return ProjectActions(
+            export: { fmt in
+                if let paint {
+                    startExport(meshURL: paint.mesh, texture: paint.texture,
+                                metallicRoughness: paint.mr, format: fmt)
+                } else if let shapeMesh {
+                    startExport(meshURL: shapeMesh, texture: nil, format: fmt)
+                }
+            },
+            camera: { preset in
+                let command = ViewerCommand(kind: .camera(preset))
+                if paint != nil { paintViewerCommand = command } else { shapeViewerCommand = command }
+            },
+            toggleHistory: { showHistory.toggle() },
+            toggleScene: { showScene.toggle() },
+            toggleMeshEdit: { showMeshEdit.toggle() },
+            hasModel: paint != nil || shapeMesh != nil,
+            hasHistory: !project.generations.isEmpty)
+    }
+
     private var paintExportSource: (mesh: URL, texture: URL, mr: URL?)? {
         guard !paintJob.isRunning else { return nil }
         switch texturedContent {

@@ -18,6 +18,7 @@ struct GrizzyModlrApp: App {
         }
         .defaultSize(width: 1180, height: 760)
         .commands {
+            ProjectCommands()
             CommandGroup(replacing: .newItem) {
                 Button("New Project") { runtime.store.newProject() }
                     .keyboardShortcut("n", modifiers: .command)
