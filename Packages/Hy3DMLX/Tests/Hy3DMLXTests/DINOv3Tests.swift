@@ -31,3 +31,35 @@ final class DINOv3Tests: XCTestCase {
     func testSmallMatchesTorch() throws { try check("small") }
     func testWideNonSquareMatchesTorch() throws { try check("wide") }
 }
+
+/// Real `facebook/dinov3-vitl16-pretrain-lvd1689m` weights (gated, installed by the user) against
+/// scripts/trellis2/make_dinov3_real_fixture.py on a 512×512 input.
+final class DINOv3RealWeightsTests: XCTestCase {
+    func testViTLMatchesTorch() throws {
+        let root = ProcessInfo.processInfo.environment["TRELLIS2_DIR"] ?? "/Volumes/Models/Modelr/trellis2"
+        let w = URL(fileURLWithPath: root + "/dinov3-vitl16/model.safetensors")
+        let xURL = URL(fileURLWithPath: root + "/fixtures/dinov3_real_x.f32")
+        let oURL = URL(fileURLWithPath: root + "/fixtures/dinov3_real_out.f32")
+        try XCTSkipUnless([w, xURL, oURL].allSatisfy { FileManager.default.fileExists(atPath: $0.path) },
+                          "DINOv3 ViT-L weights/fixtures not installed")
+        func floats(_ u: URL) throws -> [Float] {
+            let d = try Data(contentsOf: u)
+            return d.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+        }
+        let net = DINOv3FeatureExtractor(weights: try loadArrays(url: w), heads: 16)
+        XCTAssertEqual(net.layers, 24)
+        XCTAssertEqual(net.hidden, 1024)
+        let x = MLXArray(try floats(xURL), [1, 3, 512, 512]).transposed(0, 2, 3, 1)
+        let out = net(x)
+        eval(out)
+        XCTAssertEqual(out.shape, [1, 1029, 1024])
+        let ref = try floats(oURL)
+        let got = out.asArray(Float.self)
+        var d = 0.0, na = 0.0, nb = 0.0
+        for (a, b) in zip(got, ref) { d += Double(a * b); na += Double(a * a); nb += Double(b * b) }
+        let cos = d / (na.squareRoot() * nb.squareRoot())
+        let maxd = zip(got, ref).map { abs($0 - $1) }.max() ?? 0
+        print("DINOv3 ViT-L real cosine \(cos) maxAbsDiff \(maxd)")
+        XCTAssertGreaterThan(cos, 0.999)
+    }
+}
