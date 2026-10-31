@@ -36,9 +36,9 @@ public enum Preprocess {
     }
 
     /// image file -> ImageNet-normalized NHWC pixels [1, size, size, 3] for DINOv2.
-    public static func dinoPixels(_ path: String, size: Int = 518, border: Float = 0.15) -> MLXArray? {
+    public static func dinoPixels(_ path: String, size: Int = 518, border: Float = 0.15, background: Float = 1, normalize: Bool = true) -> MLXArray? {
         guard let (rgba, w, h) = decode(path) else { return nil }
-        return pixels(rgba: rgba, w: w, h: h, size: size, border: border)
+        return pixels(rgba: rgba, w: w, h: h, size: size, border: border, background: background, normalize: normalize)
     }
 
     /// CGImage (e.g. photo picker) -> ImageNet-normalized NHWC pixels [1, size, size, 3].
@@ -47,7 +47,7 @@ public enum Preprocess {
         return pixels(rgba: rgba, w: w, h: h, size: size, border: border)
     }
 
-    static func pixels(rgba: [Float], w: Int, h: Int, size: Int, border: Float) -> MLXArray {
+    static func pixels(rgba: [Float], w: Int, h: Int, size: Int, border: Float, background: Float = 1, normalize: Bool = true) -> MLXArray {
         // alpha bounding box (4 scalars off the decoded image; the heavy work below is all MLX)
         var xmin = w, xmax = -1, ymin = h, ymax = -1
         for y in 0 ..< h {
@@ -91,11 +91,12 @@ public enum Preprocess {
         let parts = split(samp, parts: 4, axis: -1)                  // r,g,b,a
         let rgbS = concatenated([parts[0], parts[1], parts[2]], axis: -1)
         let a = parts[3]
-        let comp = rgbS * a + (1 - a)                                // composite on white
+        let comp = rgbS * a + background * (1 - a)                   // composite on the background (white by default)
         let valid = MLXArray(vyH).reshaped([size, 1, 1]) * MLXArray(vxH).reshaped([1, size, 1])
-        let windowed = comp * valid + (1 - valid)                    // white outside the object window
+        let windowed = comp * valid + background * (1 - valid)      // background outside the object window
         let mean = MLXArray([Float(0.485), 0.456, 0.406])
         let std = MLXArray([Float(0.229), 0.224, 0.225])
+        if !normalize { return windowed.reshaped([1, size, size, 3]) }
         return ((windowed - mean) / std).reshaped([1, size, size, 3])
     }
 }
