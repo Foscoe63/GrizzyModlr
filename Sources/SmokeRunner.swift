@@ -17,6 +17,8 @@ import UniformTypeIdentifiers
 ///   MODELR_SMOKE_IMPORT=<root>   folder holding <root>/{shape-small,…} weight
 ///                                bundles; onboarding is completed by importing
 ///                                the needed pair from here ("import mode")
+///   MODELR_SMOKE_TRELLIS=trellis2|pixal3d  shape-only run of that model through ShapeEngine on MODELR_SMOKE_IMAGE
+///                                (weights must be installed, DINOv3 included); writes <out>/<model>.mesh
 ///   MODELR_SMOKE_DOWNLOAD=<slug> download-only mode: install one model through
 ///                                the real DownloadManager (resume-aware), then
 ///                                exit — exercises §4.3 against the live repo
@@ -80,6 +82,11 @@ enum SmokeRunner {
 
         if env["MODELR_SMOKE_INPAINT"] == "1" {
             try await runInpaintMode()
+            return
+        }
+
+        if let m = env["MODELR_SMOKE_TRELLIS"], !m.isEmpty {
+            try await runTrellisMode(m)
             return
         }
 
@@ -321,6 +328,36 @@ enum SmokeRunner {
             }
         }
         log("flow remesh: wrote images")
+    }
+
+    // MARK: - TRELLIS.2 / Pixal3D mode (real weights, shape only)
+
+    private static func runTrellisMode(_ name: String) async throws {
+        guard let model = ShapeModel(rawValue: name), model == .trellis2 || model == .pixal3d else {
+            throw fail("MODELR_SMOKE_TRELLIS must be trellis2 or pixal3d (got \(name))")
+        }
+        guard let weights = ModelStore.shapeWeightsFile(for: model) else {
+            throw fail("\(model.label) and DINOv3 must both be installed")
+        }
+        guard let image = env["MODELR_SMOKE_IMAGE"], !image.isEmpty else { throw fail("MODELR_SMOKE_IMAGE is required") }
+        let out = outDir.appendingPathComponent("\(name).mesh")
+        let t0 = Date()
+        var stages: [String] = []
+        let engine = ShapeEngine()                                 // must outlive the run (the queue holds it weakly)
+        let outcome: GenerationOutcome = await withCheckedContinuation { cont in
+            engine.generate(imageURL: URL(fileURLWithPath: image), output: out, weightsURL: weights, quantize: 0,
+                                   steps: model.defaultSteps, guidance: 7.5, resolution: 256, seed: 7,
+                                   onProgress: { stage, _, fraction in
+                                       if stages.last != stage { stages.append(stage) }
+                                       _ = fraction
+                                   },
+                                   onPreview: { _ in }, onFinish: { cont.resume(returning: $0) })
+        }
+        withExtendedLifetime(engine) {}
+        if case .failure(let message) = outcome { throw fail("\(model.label) failed: \(message)") }
+        let faces = ViewLOD.faceCount(of: out) ?? 0
+        log("\(model.label): \(faces) faces in \(Int(Date().timeIntervalSince(t0))) s, stages \(stages), wrote \(out.path)")
+        guard faces > 100_000 else { throw fail("\(model.label): only \(faces) faces") }
     }
 
     // MARK: - AI Fill mode (real Stable Diffusion weights)
