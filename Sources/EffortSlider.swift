@@ -90,8 +90,9 @@ struct ModelSettingsPopover: View {
                     Text(m.label).tag(m)
                 }
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
             .labelsHidden()
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
