@@ -185,6 +185,15 @@ final class ShapeEngine {
         defer { MLX.GPU.clearCache() }
         cachedKey = nil; cachedGen = nil; cachedTSR = nil          // one big model at a time
         func f(_ n: String) -> String { dir.appendingPathComponent(n).path }
+        // Opaque photos get the same automatic subject cutout as the Fast model; cutouts pass through.
+        var cg = cg
+        if let (rgba, w, h) = Self.subjectRGBA(cg), let provider = CGDataProvider(data: Data(rgba) as CFData),
+           let matted = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
+                                space: CGColorSpaceCreateDeviceRGB(),
+                                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
+                                provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent) {
+            cg = matted
+        }
         let dino = ModelStore.installDir(for: .dinov3).appendingPathComponent("model.safetensors").path
         let hooks = PipelineHooks(progress: { stage, frac in onProgress(stage, nil, frac) }, isCancelled: { run.cancelled })
         let isPixal = FileManager.default.fileExists(atPath: f("naf_release.pth"))
