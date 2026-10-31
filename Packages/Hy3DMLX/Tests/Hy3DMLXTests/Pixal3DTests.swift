@@ -50,3 +50,29 @@ final class Pixal3DTests: XCTestCase {
         XCTAssertGreaterThan(c, 0.999)
     }
 }
+
+/// Parity with scripts/trellis2/make_naf_fixture.py on the real NAF weights.
+final class NAFTests: XCTestCase {
+    private struct Fixture: Decodable { let h, c, hk: Int; let image, feats, out: [Float] }
+    private let root = ProcessInfo.processInfo.environment["PIXAL3D_DIR"] ?? "/Volumes/Models/Modelr/pixal3d"
+
+    func testNAFMatchesTorch() throws {
+        let fx = URL(fileURLWithPath: root + "/fixtures/naf_fixture.json")
+        let wp = URL(fileURLWithPath: root + "/naf/naf.safetensors")
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: fx.path) && FileManager.default.fileExists(atPath: wp.path), "NAF not installed")
+        let f = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: fx))
+        let naf = NAFUpsampler(weights: try loadArrays(url: wp))
+        // fixture tensors are NCHW; the Swift path is NHWC
+        let img = MLXArray(f.image, [1, 3, f.h, f.h]).transposed(0, 2, 3, 1)
+        let feats = MLXArray(f.feats, [1, f.c, f.hk, f.hk]).transposed(0, 2, 3, 1)
+        let out = naf(image: img, features: feats, outputSize: (f.h, f.h)).transposed(0, 3, 1, 2)
+        eval(out)
+        var d = 0.0, na = 0.0, nb = 0.0
+        let got = out.asArray(Float.self)
+        for (a, b) in zip(got, f.out) { d += Double(a * b); na += Double(a * a); nb += Double(b * b) }
+        let cos = d / (na.squareRoot() * nb.squareRoot())
+        let m = zip(got, f.out).map { abs($0 - $1) }.max() ?? 0
+        print("NAF cosine \(cos) maxAbsDiff \(m)")
+        XCTAssertGreaterThan(cos, 0.9999)
+    }
+}
