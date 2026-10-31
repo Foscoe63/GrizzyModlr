@@ -128,3 +128,17 @@ Pixal3D's shape DiTs take 2048-d `proj` features: DINOv3 patch features concaten
 - Architecture is small and has no learned q/k/v projections: two conv encoders on the RGB image (1x1-kernel and 3x3-kernel branches, each a conv + 2 GroupNorm/SiLU/conv blocks, 128 channels each, reflect padding) concatenated to 256 channels, adaptive-avg-pooled to the output size, axial RoPE (base 100, coordinate rescale only in training), then 4-head 9x9 neighbourhood cross-attention. Queries are the RoPE'd image features at output size, keys are the same features pooled to the DINOv3 grid, values are the DINOv3 features. Keys and values are nearest-exact resized to the query grid, and the attention uses dilation = query size / key size.
 - The only awkward piece is the `natten` kernel (CUDA/CPU extension, which we do not have). Its edge rule clamps the 9x9 window inside the map instead of zero padding; that must be reproduced exactly. In MLX it is a gather over 81 neighbours per query. At 512x512 that is 262k queries x 81 x 4 heads x 64 dims, which is workable in chunks, and Pixal3D only samples the map at the voxel projections, so a lazy per-voxel version is possible.
 - Verdict: feasible, roughly a day of work including a standalone PyTorch reference (needs a pure-PyTorch replacement for `natten` in the reference, checked against the clamp rule). Not started.
+
+## Port status (2026-10-31, branch claude/pixal3d-cc9f55)
+
+Measured on this Mac (M-series, 96 GB), fp32, one example image (a crown), seed 42, 12+12 steps, CFG on. Single runs, not benchmarks.
+
+| Pipeline | Time | Peak MLX memory | Output |
+|---|---|---|---|
+| TRELLIS.2 512 (black background, no margin) | 55 s | 8.7 GB | 1.67 M verts, 3.83 M faces, clean crown |
+| Pixal3D 512 stage (FOV 0.8576, distance derived 1.09) | 39 s | 8.2 GB | 0.74 M verts, 1.51 M faces, coherent crown |
+
+- Parity vs PyTorch CPU fp32 (cosine): NAF 1.0 (against my reference, with NATTEN's window rule as I read it), projection sampler 1.0, Pixal3D structure DiT with `proj_linear` 1.0. Earlier modules are listed in the commit history. The shape DiT with `proj_linear` is run end to end but has no separate parity fixture.
+- End-to-end quality was judged by eye from a depth-shaded render, no numeric comparison against the PyTorch pipeline's mesh. Pixal3D's mesh is in its own y-up frame (TRELLIS.2's is z-up).
+- A first Pixal3D run with a placeholder camera distance of 2.0 gave fragmented geometry. Pixal3D derives the distance from the FOV (`distance_from_fov`), and that fixed it.
+- Not ported: MoGe-2 (FOV estimation; `Ruicheng/moge-2-vitl`, MIT, `model.pt` 1,305,030,700 bytes, DINOv2-L encoder plus conv heads plus a focal solver), the 1024/1536 cascade levels (needs the 1024 DiT, 5.55 GB), texturing, bf16, background removal (the example image already had alpha), multi-view, and all app wiring.
