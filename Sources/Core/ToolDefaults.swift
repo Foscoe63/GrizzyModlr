@@ -61,6 +61,7 @@ enum ToolDefaults {
         static let ttiAutoGenerate = "tools.ttiAutoGenerate"
         static let normalBake = "tools.normalBake"
         static let normalBakeStrength = "tools.normalBakeStrength"
+        static let pixal3dFOV = "tools.pixal3dFOV"
         static let normalBakeCage = "tools.normalBakeCage"
     }
 
@@ -101,6 +102,8 @@ enum ToolDefaults {
     static let fallbackWeightBrushStrength = 0.6
     static let fallbackRigClipSpeed = 1.0
     static let fallbackTSRThreshold = 25.0
+    /// Pixal3D's own default horizontal field of view (49.1°) when no estimate is available.
+    static let fallbackPixal3dFOV = 0.8575560450553894
     static let fallbackTSRForegroundRatio = 0.85
     static let fallbackReliefDepth = 0.25
     static let fallbackReliefResolution = 256.0
@@ -163,6 +166,8 @@ enum ToolDefaults {
     static func normalBakeStrength(_ d: UserDefaults = .standard) -> Double { double(Key.normalBakeStrength, fallbackNormalBakeStrength, d) }
     /// Ray cage depth in percent of the model's bounding-box diagonal.
     static func normalBakeCage(_ d: UserDefaults = .standard) -> Double { double(Key.normalBakeCage, fallbackNormalBakeCage, d) }
+    /// Horizontal FOV in radians for Pixal3D's pixel-aligned conditioning.
+    static func pixal3dFOV(_ d: UserDefaults = .standard) -> Double { double(Key.pixal3dFOV, fallbackPixal3dFOV, d) }
     static func tsrThreshold(_ d: UserDefaults = .standard) -> Float { Float(double(Key.tsrThreshold, fallbackTSRThreshold, d)) }
     static func tsrForegroundRatio(_ d: UserDefaults = .standard) -> Float { Float(double(Key.tsrForegroundRatio, fallbackTSRForegroundRatio, d)) }
     static func tsrKeepLargest(_ d: UserDefaults = .standard) -> Bool { d.object(forKey: Key.tsrKeepLargest) as? Bool ?? true }

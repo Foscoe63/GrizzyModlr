@@ -411,6 +411,8 @@ final class ProjectStore {
     func setShapeModel(_ model: ShapeModel, for id: Project.ID) {
         guard let i = projects.firstIndex(where: { $0.id == id }) else { return }
         projects[i].shapeModel = model
+        // TRELLIS.2 / Pixal3D are tuned for guidance 7.5 (the Hunyuan default is 5).
+        if (model == .trellis2 || model == .pixal3d), projects[i].guidance == 5.0 { projects[i].guidance = 7.5 }
         save()
     }
 

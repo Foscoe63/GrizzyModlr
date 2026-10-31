@@ -1,6 +1,16 @@
 import Foundation
 import MLX
 
+/// Progress and cancellation callbacks for the TRELLIS.2 / Pixal3D pipelines. `progress` gets a stage name and a
+/// 0...1 fraction of the whole run; a cancelled run throws `CancellationError` at the next step boundary.
+public struct PipelineHooks {
+    public var progress: (String, Double) -> Void
+    public var isCancelled: () -> Bool
+    public init(progress: @escaping (String, Double) -> Void = { _, _ in }, isCancelled: @escaping () -> Bool = { false }) {
+        self.progress = progress; self.isCancelled = isCancelled
+    }
+}
+
 /// Flow-matching Euler sampler with classifier-free guidance, a guidance interval and CFG rescale, matching
 /// TRELLIS.2 `FlowEulerGuidanceIntervalSampler` (`pipeline.json` sampler params).
 struct FlowEulerSampler {
@@ -27,10 +37,12 @@ struct FlowEulerSampler {
     }
 
     /// `predict(x, t1000, conditional)` returns the model's velocity; t1000 is t×1000 as the model expects.
-    func sample(noise: MLXArray, predict: (MLXArray, Float, Bool) -> MLXArray) -> MLXArray {
+    func sample(noise: MLXArray, onStep: ((Int, Int) -> Bool)? = nil, predict: (MLXArray, Float, Bool) -> MLXArray) -> MLXArray {
         let sig = params.sigmaMin
         var x = noise
-        for (t, tPrev) in schedule() {
+        let steps = schedule()
+        for (i, (t, tPrev)) in steps.enumerated() {
+            if let onStep, !onStep(i, steps.count) { return x }
             let tf = Float(t)
             let s = (Double(params.guidanceInterval.0) <= t && t <= Double(params.guidanceInterval.1)) ? params.guidanceStrength : 1
             var pred: MLXArray

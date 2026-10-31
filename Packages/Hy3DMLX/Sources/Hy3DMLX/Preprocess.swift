@@ -42,9 +42,9 @@ public enum Preprocess {
     }
 
     /// CGImage (e.g. photo picker) -> ImageNet-normalized NHWC pixels [1, size, size, 3].
-    public static func dinoPixels(cgImage img: CGImage, size: Int = 518, border: Float = 0.15) -> MLXArray? {
+    public static func dinoPixels(cgImage img: CGImage, size: Int = 518, border: Float = 0.15, background: Float = 1, normalize: Bool = true) -> MLXArray? {
         guard let (rgba, w, h) = decode(img) else { return nil }
-        return pixels(rgba: rgba, w: w, h: h, size: size, border: border)
+        return pixels(rgba: rgba, w: w, h: h, size: size, border: border, background: background, normalize: normalize)
     }
 
     static func pixels(rgba: [Float], w: Int, h: Int, size: Int, border: Float, background: Float = 1, normalize: Bool = true) -> MLXArray {

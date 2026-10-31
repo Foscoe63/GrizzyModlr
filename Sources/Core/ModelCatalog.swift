@@ -18,6 +18,12 @@ enum ModelID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case depthEstimation = "depth-estimation"
     /// TripoSR: a fast single-pass shape model (seconds); the "Fast" shape option.
     case triposr = "triposr"
+    /// TRELLIS.2 (Microsoft, MIT): sparse-voxel flow shape model, 512 level, geometry only.
+    case shapeTrellis2 = "shape-trellis2"
+    /// Pixal3D (Tencent, MIT): TRELLIS.2 with pixel-aligned conditioning (DINOv3 + NAF), 512 stage, geometry only.
+    case shapePixal3d = "shape-pixal3d"
+    /// DINOv3 ViT-L/16 (Meta): the image encoder TRELLIS.2 and Pixal3D condition on. Gated: install via Import.
+    case dinov3 = "dinov3-vitl16"
 
     var id: String { rawValue }
 
@@ -26,7 +32,7 @@ enum ModelID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
 
     var kind: EngineKind {
         switch self {
-        case .shapeSmall, .shapeLarge, .shapeFull, .shapeMultiView, .triposr: return .shape
+        case .shapeSmall, .shapeLarge, .shapeFull, .shapeMultiView, .triposr, .shapeTrellis2, .shapePixal3d, .dinov3: return .shape
         case .paintSmall, .paintLarge, .viewSynthesis, .textToImage, .depthEstimation: return .paint
         }
     }
@@ -40,6 +46,11 @@ struct CatalogFile: Hashable, Sendable {
     let sha256: String
     /// Path in the HF repo when it differs from the local install path (nil = same).
     var remotePath: String? = nil
+    /// Another HF repo / revision when the file does not live in the model's own repo (nil = the model's).
+    var remoteRepo: String? = nil
+    var remoteRevision: String? = nil
+    /// A complete download URL for files that are not on Hugging Face (e.g. a GitHub release asset).
+    var remoteURL: String? = nil
 }
 
 struct CatalogModel: Sendable {
@@ -56,8 +67,9 @@ struct CatalogModel: Sendable {
 
     /// Resolve the download URL for one file.
     func remoteURL(for file: CatalogFile) -> URL {
-        let rev = revision ?? "main"
-        return URL(string: "https://huggingface.co/\(repo)/resolve/\(rev)/\(file.remotePath ?? file.path)?download=true")!
+        if let full = file.remoteURL, let url = URL(string: full) { return url }
+        let rev = file.remoteRevision ?? revision ?? "main"
+        return URL(string: "https://huggingface.co/\(file.remoteRepo ?? repo)/resolve/\(rev)/\(file.remotePath ?? file.path)?download=true")!
     }
 }
 
@@ -110,6 +122,63 @@ enum ModelCatalog {
                 CatalogFile(path: "model.fp16.safetensors", bytes: 4_928_151_562,
                             sha256: "360bc281fc956d4acac0c3d36d5ec0ebf8cdddbf4b8892e894d12419388d479b",
                             remotePath: "hunyuan3d-dit-v2-0/model.fp16.safetensors"),
+            ]),
+        CatalogModel(
+            id: .shapeTrellis2,
+            displayName: "Shape · TRELLIS.2",
+            detail: "Microsoft TRELLIS.2 · 1.3B sparse flow · 512 level, geometry only · needs the DINOv3 encoder",
+            repo: "microsoft/TRELLIS.2-4B",
+            revision: "af44b45f2e35a493886929c6d786e563ec68364d",
+            files: [
+                CatalogFile(path: "ss_flow.safetensors", bytes: 2_584_426_920,
+                            sha256: "ca01377c485bec418076d38ee80166d32dc776d744f2553b835cba1e97a7abf6",
+                            remotePath: "ckpts/ss_flow_img_dit_1_3B_64_bf16.safetensors"),
+                CatalogFile(path: "shape_flow_512.safetensors", bytes: 2_584_574_424,
+                            sha256: "ec5e0917ef9b7e25ad51dffc7d19687a42019871f94239f2fa7f86264c55b70f",
+                            remotePath: "ckpts/slat_flow_img2shape_dit_1_3B_512_bf16.safetensors"),
+                CatalogFile(path: "shape_dec.safetensors", bytes: 948_490_494,
+                            sha256: "e3b718d3e43e4f8780e9a24ac6fff231811a67e3b058e336e10fe654c911d581",
+                            remotePath: "ckpts/shape_dec_next_dc_f16c32_fp16.safetensors"),
+                CatalogFile(path: "ss_dec.safetensors", bytes: 147_591_972,
+                            sha256: "1c76d4a40519aa2d711cc263a8404105231ac26db31d946bed48b84fee79009a",
+                            remotePath: "ckpts/ss_dec_conv3d_16l8_fp16.safetensors",
+                            remoteRepo: "microsoft/TRELLIS-image-large",
+                            remoteRevision: "25e0d31ffbebe4b5a97464dd851910efc3002d96"),
+            ]),
+        CatalogModel(
+            id: .shapePixal3d,
+            displayName: "Shape · Pixal3D",
+            detail: "Tencent Pixal3D · pixel-aligned TRELLIS.2 · 512 stage, geometry only · fp32, large · needs the DINOv3 encoder",
+            repo: "TencentARC/Pixal3D",
+            revision: "b0cb2e1b794cab9aa0ac38a95d794a4d9337437f",
+            files: [
+                CatalogFile(path: "ss_flow.safetensors", bytes: 5_359_822_584,
+                            sha256: "6d0147bb347eb61fa81c304cc68c7fd69d447e91870357a549b47e1d0fd77242",
+                            remotePath: "ckpts/ss_flow_img_dit_1_3B_64_bf16.safetensors"),
+                CatalogFile(path: "shape_flow_512.safetensors", bytes: 5_546_764_048,
+                            sha256: "63569838c1da93f010e2fa805b202ecf802cc758830230abac202a81b70e5b45",
+                            remotePath: "ckpts/slat_flow_img2shape_dit_1_3B_512_bf16.safetensors"),
+                CatalogFile(path: "shape_dec.safetensors", bytes: 948_490_494,
+                            sha256: "e3b718d3e43e4f8780e9a24ac6fff231811a67e3b058e336e10fe654c911d581",
+                            remotePath: "ckpts/shape_dec_next_dc_f16c32_fp16.safetensors"),
+                CatalogFile(path: "ss_dec.safetensors", bytes: 147_591_972,
+                            sha256: "1c76d4a40519aa2d711cc263a8404105231ac26db31d946bed48b84fee79009a",
+                            remotePath: "ckpts/ss_dec_conv3d_16l8_fp16.safetensors"),
+                CatalogFile(path: "naf_release.pth", bytes: 2_664_431,
+                            sha256: "c096c1ab2217a5c3ac136365f721685e2201379cb69d509cfb0261183847c98f",
+                            remoteURL: "https://github.com/valeoai/NAF/releases/download/model/naf_release.pth"),
+            ]),
+        CatalogModel(
+            id: .dinov3,
+            displayName: "DINOv3 ViT-L/16",
+            detail: "Meta image encoder for TRELLIS.2 and Pixal3D · gated: request access on Hugging Face, then Import",
+            repo: "facebook/dinov3-vitl16-pretrain-lvd1689m",
+            revision: "ea8dc2863c51be0a264bab82070e3e8836b02d51",
+            files: [
+                CatalogFile(path: "config.json", bytes: 745,
+                            sha256: "135ecd23e34a70b6fbed8b083fdecb319b7e3a54e3d849258bbe4ddcf1783bb5"),
+                CatalogFile(path: "model.safetensors", bytes: 1_212_559_808,
+                            sha256: "dcb2e45127cccbf1601e5f42fef165eea275c8e5213197e8dcf3f48822718179"),
             ]),
         CatalogModel(
             id: .paintSmall,
