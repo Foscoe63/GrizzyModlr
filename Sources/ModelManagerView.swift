@@ -26,6 +26,19 @@ struct ModelManagerView: View {
     @State private var importTarget: ModelID?
 
     var body: some View {
+        ScrollView {
+            content
+        }
+        .frame(height: 560)
+        .fileImporter(isPresented: importPresented, allowedContentTypes: [.folder]) { result in
+            if let target = importTarget, case .success(let url) = result {
+                runtime.importWeights(target, from: url)
+            }
+            importTarget = nil
+        }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(ModelID.allCases) { model in
                 ModelRow(model: model, importTarget: $importTarget)
@@ -39,12 +52,6 @@ struct ModelManagerView: View {
             footer
         }
         .padding(.vertical, 8)
-        .fileImporter(isPresented: importPresented, allowedContentTypes: [.folder]) { result in
-            if let target = importTarget, case .success(let url) = result {
-                runtime.importWeights(target, from: url)
-            }
-            importTarget = nil
-        }
     }
 
     private var importPresented: Binding<Bool> {
