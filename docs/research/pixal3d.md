@@ -119,3 +119,12 @@ Cheapest ways to get the benefit now:
 
 - Nothing was downloaded or run. No numerical parity, no timing, no memory measurement.
 - Not read: the Mac port's `PIPELINE_MAP.md` and kernel code, `o_voxel`, the NOTICE text, the licenses of DINOv3, RMBG-2.0 and MoGe, and the details of the feature upsampler.
+
+## NAF upsampler (needed by the shape stages), assessed 2026-10-31
+
+Pixal3D's shape DiTs take 2048-d `proj` features: DINOv3 patch features concatenated with the same features upsampled by NAF (`valeoai/NAF`, `use_naf_upsample=True`, target 512 px at the 512 level). The structure stage does not use it.
+
+- Source read from <https://github.com/valeoai/NAF> (Apache-2.0; `src/layers/rope.py` carries a Meta header saying it follows the DINOv3 License Agreement, which I have not reviewed). Weights: `naf_release.pth`, 2,664,431 bytes (GitHub release `model`). That is about 2.7 MB, not hundreds of MB.
+- Architecture is small and has no learned q/k/v projections: two conv encoders on the RGB image (1x1-kernel and 3x3-kernel branches, each a conv + 2 GroupNorm/SiLU/conv blocks, 128 channels each, reflect padding) concatenated to 256 channels, adaptive-avg-pooled to the output size, axial RoPE (base 100, coordinate rescale only in training), then 4-head 9x9 neighbourhood cross-attention. Queries are the RoPE'd image features at output size, keys are the same features pooled to the DINOv3 grid, values are the DINOv3 features. Keys and values are nearest-exact resized to the query grid, and the attention uses dilation = query size / key size.
+- The only awkward piece is the `natten` kernel (CUDA/CPU extension, which we do not have). Its edge rule clamps the 9x9 window inside the map instead of zero padding; that must be reproduced exactly. In MLX it is a gather over 81 neighbours per query. At 512x512 that is 262k queries x 81 x 4 heads x 64 dims, which is workable in chunks, and Pixal3D only samples the map at the voxel projections, so a lazy per-voxel version is possible.
+- Verdict: feasible, roughly a day of work including a standalone PyTorch reference (needs a pure-PyTorch replacement for `natten` in the reference, checked against the clamp rule). Not started.
