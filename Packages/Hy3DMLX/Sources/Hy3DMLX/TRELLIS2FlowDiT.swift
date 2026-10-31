@@ -85,12 +85,15 @@ final class TRELLIS2FlowDiT {
     }
 
     /// Context K/V depend only on the conditioning, so callers sampling many steps can reuse them; kept simple here.
-    func callAsFunction(x: MLXArray, coords: MLXArray, t: Float, cond: MLXArray) -> MLXArray {
+    /// `proj` ([N, projIn], Pixal3D only): per-token view-aligned features; each block adds `proj_linear(proj)` to
+    /// its cross-attention output. Pixal3D checkpoints nest the attention under `cross_attn.cross_attn_block`.
+    func callAsFunction(x: MLXArray, coords: MLXArray, t: Float, cond: MLXArray, proj: MLXArray? = nil) -> MLXArray {
         let n = x.dim(0), c = cfg.channels, hs = cfg.heads, d = headDim
         let ang = TRELLIS2FlowDiT.ropeAngles(coords: coords, headDim: d)
         let cs = cos(ang).reshaped(n, 1, d / 2), sn = sin(ang).reshaped(n, 1, d / 2)
         let mod = modulation(t: t)
         let ctx = cond.asType(dtype)
+        let projIn = proj?.asType(dtype)
         var h = lin(x.asType(dtype), "input_layer")
         for i in 0 ..< cfg.blocks {
             let p = "blocks.\(i)"
@@ -106,11 +109,14 @@ final class TRELLIS2FlowDiT {
             h = h + lin(o, p + ".self_attn.to_out") * gA
 
             y = ln(h, p + ".norm2")
-            q = rms(lin(y, p + ".cross_attn.to_q").reshaped(n, hs, d), w[p + ".cross_attn.q_rms_norm.gamma"]!)
-            let kv = lin(ctx, p + ".cross_attn.to_kv").reshaped(ctx.dim(0), 2, hs, d)
-            k = rms(kv[0..., 0], w[p + ".cross_attn.k_rms_norm.gamma"]!)
+            let ca = projIn != nil ? p + ".cross_attn.cross_attn_block" : p + ".cross_attn"
+            q = rms(lin(y, ca + ".to_q").reshaped(n, hs, d), w[ca + ".q_rms_norm.gamma"]!)
+            let kv = lin(ctx, ca + ".to_kv").reshaped(ctx.dim(0), 2, hs, d)
+            k = rms(kv[0..., 0], w[ca + ".k_rms_norm.gamma"]!)
             o = attend(q, k, kv[0..., 1])
-            h = h + lin(o, p + ".cross_attn.to_out")
+            o = lin(o, ca + ".to_out")
+            if let pr = projIn { o = o + lin(pr, p + ".cross_attn.proj_linear") }
+            h = h + o
 
             y = ln(h) * (1 + scM) + shM
             y = lin(gelu(lin(y, p + ".mlp.mlp.0")), p + ".mlp.mlp.2")
