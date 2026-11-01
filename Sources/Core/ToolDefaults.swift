@@ -62,6 +62,9 @@ enum ToolDefaults {
         static let normalBake = "tools.normalBake"
         static let normalBakeStrength = "tools.normalBakeStrength"
         static let pixal3dFOV = "tools.pixal3dFOV"
+        static let trellisCleanup = "tools.trellisCleanup"
+        static let trellisCleanupSmooth = "tools.trellisCleanupSmooth"
+        static let trellisCleanupRemesh = "tools.trellisCleanupRemesh"
         static let normalBakeCage = "tools.normalBakeCage"
     }
 
@@ -105,6 +108,11 @@ enum ToolDefaults {
     /// Pixal3D's own default horizontal field of view (49.1°) when no estimate is available.
     static let fallbackPixal3dFOV = 0.8575560450553894
     static let fallbackTSRForegroundRatio = 0.85
+    /// TRELLIS.2 / Pixal3D meshes are cut from a 512 voxel grid and show its stair-steps; smoothing
+    /// then remeshing after generation removes them.
+    static let fallbackTrellisCleanupSmooth = 12.0
+    /// 0 skips the remesh and only smooths.
+    static let fallbackTrellisCleanupRemesh = 320.0
     static let fallbackReliefDepth = 0.25
     static let fallbackReliefResolution = 256.0
     static let fallbackReliefSmoothing = 2.0
@@ -168,6 +176,9 @@ enum ToolDefaults {
     static func normalBakeCage(_ d: UserDefaults = .standard) -> Double { double(Key.normalBakeCage, fallbackNormalBakeCage, d) }
     /// Horizontal FOV in radians for Pixal3D's pixel-aligned conditioning.
     static func pixal3dFOV(_ d: UserDefaults = .standard) -> Double { double(Key.pixal3dFOV, fallbackPixal3dFOV, d) }
+    static func trellisCleanup(_ d: UserDefaults = .standard) -> Bool { d.object(forKey: Key.trellisCleanup) as? Bool ?? true }
+    static func trellisCleanupSmooth(_ d: UserDefaults = .standard) -> Int { Int(double(Key.trellisCleanupSmooth, fallbackTrellisCleanupSmooth, d)) }
+    static func trellisCleanupRemesh(_ d: UserDefaults = .standard) -> Int { Int(double(Key.trellisCleanupRemesh, fallbackTrellisCleanupRemesh, d)) }
     static func tsrThreshold(_ d: UserDefaults = .standard) -> Float { Float(double(Key.tsrThreshold, fallbackTSRThreshold, d)) }
     static func tsrForegroundRatio(_ d: UserDefaults = .standard) -> Float { Float(double(Key.tsrForegroundRatio, fallbackTSRForegroundRatio, d)) }
     static func tsrKeepLargest(_ d: UserDefaults = .standard) -> Bool { d.object(forKey: Key.tsrKeepLargest) as? Bool ?? true }

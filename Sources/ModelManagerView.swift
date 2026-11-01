@@ -337,6 +337,9 @@ struct ToolSettingsView: View {
     @AppStorage(ToolDefaults.Key.weightBrushStrength) private var weightBrushStrength = ToolDefaults.fallbackWeightBrushStrength
     @AppStorage(ToolDefaults.Key.rigClipSpeed) private var rigClipSpeed = ToolDefaults.fallbackRigClipSpeed
     @AppStorage(ToolDefaults.Key.pixal3dFOV) private var pixal3dFOV = ToolDefaults.fallbackPixal3dFOV
+    @AppStorage(ToolDefaults.Key.trellisCleanup) private var trellisCleanup = true
+    @AppStorage(ToolDefaults.Key.trellisCleanupSmooth) private var trellisCleanupSmooth = ToolDefaults.fallbackTrellisCleanupSmooth
+    @AppStorage(ToolDefaults.Key.trellisCleanupRemesh) private var trellisCleanupRemesh = ToolDefaults.fallbackTrellisCleanupRemesh
     @AppStorage(ToolDefaults.Key.tsrThreshold) private var tsrThreshold = ToolDefaults.fallbackTSRThreshold
     @AppStorage(ToolDefaults.Key.tsrForegroundRatio) private var tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
     @AppStorage(ToolDefaults.Key.tsrKeepLargest) private var tsrKeepLargest = true
@@ -490,6 +493,15 @@ struct ToolSettingsView: View {
                     LabeledContent("Pixal3D camera field of view") {
                         slider($pixal3dFOV, 0.35...1.4, step: 0.01, label: String(format: "%.0f°", pixal3dFOV * 180 / .pi))
                     }
+                    Toggle("Smooth and remesh after generating", isOn: $trellisCleanup)
+                    LabeledContent("Smoothing") {
+                        slider($trellisCleanupSmooth, 0...30, step: 1, label: "\(Int(trellisCleanupSmooth)) iterations")
+                    }.disabled(!trellisCleanup)
+                    LabeledContent("Remesh detail") {
+                        slider($trellisCleanupRemesh, 0...384, step: 32, label: trellisCleanupRemesh < 1 ? "off" : "\(Int(trellisCleanupRemesh)) voxels")
+                    }.disabled(!trellisCleanup)
+                    Text("These models build the surface from a 512 voxel grid, which leaves grainy stair-steps. This smooths the shape, rebuilds it evenly (needs a closed shape; otherwise it only smooths), then smooths again. Lower the values to keep sharper detail.")
+                        .font(.caption).foregroundStyle(.secondary)
                     Text("Pixal3D lines the shape up with your photo using a camera; 49° suits most photos, lower for telephoto shots, higher for wide-angle. Both models need the DINOv3 encoder (gated by Meta: request access on Hugging Face, then use Import in the Models tab) and a photo with the background removed. Steps, guidance and seed use the shape settings. They make the shape only, at the 512 level; paint it afterwards.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -623,6 +635,8 @@ struct ToolSettingsView: View {
         rigTPoseReach = ToolDefaults.fallbackRigTPoseReach; rigMinAspect = ToolDefaults.fallbackRigMinAspect
         defaultPose = ToolDefaults.fallbackDefaultPose; weightBrushAdd = true
         pixal3dFOV = ToolDefaults.fallbackPixal3dFOV
+        trellisCleanup = true; trellisCleanupSmooth = ToolDefaults.fallbackTrellisCleanupSmooth
+        trellisCleanupRemesh = ToolDefaults.fallbackTrellisCleanupRemesh
         tsrThreshold = ToolDefaults.fallbackTSRThreshold; tsrForegroundRatio = ToolDefaults.fallbackTSRForegroundRatio
         tsrKeepLargest = true
         normalBake = true; normalBakeStrength = ToolDefaults.fallbackNormalBakeStrength

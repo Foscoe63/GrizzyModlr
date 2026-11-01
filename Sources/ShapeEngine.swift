@@ -225,11 +225,16 @@ final class ShapeEngine {
             }
             if run.cancelled { onFinish(.failure("Cancelled")); return }
             // TRELLIS.2 meshes are z-up; Pixal3D's are already y-up.
-            let v = (0 ..< verts.count / 3).map { i -> SIMD3<Float> in
+            let v0 = (0 ..< verts.count / 3).map { i -> SIMD3<Float> in
                 let x = verts[i * 3], y = verts[i * 3 + 1], z = verts[i * 3 + 2]
                 return isPixal ? SIMD3(x, y, z) : SIMD3(x, z, -y)
             }
-            let t = (0 ..< faces.count / 3).map { SIMD3<UInt32>(UInt32(faces[$0 * 3]), UInt32(faces[$0 * 3 + 1]), UInt32(faces[$0 * 3 + 2])) }
+            var t = (0 ..< faces.count / 3).map { SIMD3<UInt32>(UInt32(faces[$0 * 3]), UInt32(faces[$0 * 3 + 1]), UInt32(faces[$0 * 3 + 2])) }
+            var v = v0
+            if ToolDefaults.trellisCleanup() {
+                onProgress("Smoothing", nil, 0.9)
+                (v, t) = Self.cleanVoxelSurface(positions: v, faces: t)
+            }
             onProgress("Writing mesh", nil, 0.97)
             try MeshDecimator.serialize(positions: v, faces: t).write(to: output)
             onFinish(.success)
@@ -238,6 +243,21 @@ final class ShapeEngine {
         } catch {
             onFinish(.failure("TRELLIS run failed: \(error.localizedDescription)"))
         }
+    }
+
+    /// Removes the 512-grid stair-steps from a TRELLIS.2 / Pixal3D mesh: smooth, remesh through the
+    /// distance field (skipped when the shape is open), smooth again. Falls back to the smoothed mesh.
+    static func cleanVoxelSurface(positions: [SIMD3<Float>], faces: [SIMD3<UInt32>])
+        -> ([SIMD3<Float>], [SIMD3<UInt32>]) {
+        let iterations = ToolDefaults.trellisCleanupSmooth()
+        var p = MeshOps.smooth(positions: positions, faces: faces, iterations: iterations)
+        var f = faces
+        let res = ToolDefaults.trellisCleanupRemesh()
+        if res >= 48, let r = MeshBoolean.remesh(positions: p, faces: f, resolution: res) {
+            p = MeshOps.smooth(positions: r.positions, faces: r.faces, iterations: max(2, iterations / 3))
+            f = r.faces
+        }
+        return (p, f)
     }
 
     // MARK: TripoSR
