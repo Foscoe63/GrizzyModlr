@@ -7,7 +7,7 @@ final class FullShapeModelTests: XCTestCase {
         XCTAssertEqual(ShapeModel(legacyRaw: "large"), .large)           // existing projects unchanged
         XCTAssertEqual(ShapeModel.full.defaultSteps, 50)
         XCTAssertEqual(ModelID.shapeFull.kind, .shape)
-        XCTAssertEqual(ShapeModel.allCases.map(\.label), ["Small", "Large", "Full", "Fast"])
+        XCTAssertEqual(ShapeModel.allCases.map(\.label), ["Small", "Large", "Full", "2.1", "Fast"])
     }
 
     func testFullStepsLadderIsMonotonicAndBeyondTurbo() {

@@ -1,12 +1,27 @@
 import Foundation
 import MLX
 
+/// Denoiser interface shared by the FLUX-style DiT (2.0 family) and the Hunyuan-DiT with MoE (2.1).
+public protocol ShapeDenoiser {
+    var guidanceEmbed: Bool { get }
+    func callAsFunction(_ x: MLXArray, _ t: MLXArray, _ cond: MLXArray, guidance: MLXArray?) -> MLXArray
+}
+extension DiT: ShapeDenoiser {}
+
+/// ShapeVAE decode path: latents -> kv, then SDF queries.
+public protocol ShapeDecoder {
+    var scaleFactor: Float { get }
+    func decode(_ latents: MLXArray) -> MLXArray
+    func geoDecoder(_ queries: MLXArray, _ kv: MLXArray) -> MLXArray
+}
+extension VAE: ShapeDecoder {}
+
 /// Shape pipeline in MLX Swift: CFG flow-match denoise (DiT) -> VAE decode -> SDF grid (dense or
 /// octree). All tensor math is MLX; only the per-level octree index bookkeeping is host-side.
 public struct Pipeline {
-    let dit: DiT
-    let vae: VAE
-    public init(dit: DiT, vae: VAE) { self.dit = dit; self.vae = vae }
+    let dit: any ShapeDenoiser
+    let vae: any ShapeDecoder
+    public init(dit: any ShapeDenoiser, vae: any ShapeDecoder) { self.dit = dit; self.vae = vae }
 
     /// Flow-match Euler loop. Two modes:
     ///  - CFG (guidanceEmbed=false): `cond` is [2,Lc,Cc] (cond, uncond); one forward over a
@@ -30,7 +45,7 @@ public struct Pipeline {
             if guidanceEmbed {
                 v = dit(lat, MLXArray([si]), cond, guidance: gvec)   // single forward, guidance token
             } else {
-                let vv = dit(concatenated([lat, lat], axis: 0), MLXArray([si, si]), cond)
+                let vv = dit(concatenated([lat, lat], axis: 0), MLXArray([si, si]), cond, guidance: nil)
                 let vp = split(vv, parts: 2, axis: 0)                // v_cond, v_uncond
                 v = vp[1] + guidance * (vp[0] - vp[1])
             }

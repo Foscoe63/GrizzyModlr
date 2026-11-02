@@ -6,6 +6,8 @@ enum ModelID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case shapeLarge = "shape-large"
     /// Hunyuan3D 2.0 full (non-distilled): same network as Large, run with real CFG over many steps.
     case shapeFull = "shape-full"
+    /// Hunyuan3D 2.1: a different network (Hunyuan-DiT with mixture-of-experts, DINOv2-large, 4096 latents).
+    case shapeV21 = "shape-v21"
     case paintSmall = "paint-small"
     case paintLarge = "paint-large"
     /// Hunyuan3D-2mv: optional, used automatically when a project has 2+ reference views.
@@ -26,7 +28,7 @@ enum ModelID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
 
     var kind: EngineKind {
         switch self {
-        case .shapeSmall, .shapeLarge, .shapeFull, .shapeMultiView, .triposr: return .shape
+        case .shapeSmall, .shapeLarge, .shapeFull, .shapeV21, .shapeMultiView, .triposr: return .shape
         case .paintSmall, .paintLarge, .viewSynthesis, .textToImage, .depthEstimation: return .paint
         }
     }
@@ -110,6 +112,22 @@ enum ModelCatalog {
                 CatalogFile(path: "model.fp16.safetensors", bytes: 4_928_151_562,
                             sha256: "360bc281fc956d4acac0c3d36d5ec0ebf8cdddbf4b8892e894d12419388d479b",
                             remotePath: "hunyuan3d-dit-v2-0/model.fp16.safetensors"),
+            ]),
+        CatalogModel(
+            id: .shapeV21,
+            displayName: "Shape · 2.1",
+            detail: "Hunyuan3D 2.1 · 3.1B mixture-of-experts · 4096 latents · most detail, heaviest (7.4 GB)",
+            repo: "tencent/Hunyuan3D-2.1",
+            revision: "0b94677654c57bb9a6b6845cd7b704ccf551d327",
+            files: [
+                CatalogFile(path: "config.yaml", bytes: 2_078,
+                            sha256: "a9e9b66f0163a9b827d730633ac88f47fcc8e3071dcbb9ee12d88ef7537c5c6e",
+                            remotePath: "hunyuan3d-dit-v2-1/config.yaml"),
+                // The upstream checkpoint is a torch pickle (DiT + VAE + DINOv2 in one file); the app
+                // reads it directly with TorchCheckpoint, no converted copy is written.
+                CatalogFile(path: "model.fp16.ckpt", bytes: 7_366_389_768,
+                            sha256: "6b519fc7242f78e9b5f47ea4d55668fe3d944a2d27332f4ca68d29a6ff603f5e",
+                            remotePath: "hunyuan3d-dit-v2-1/model.fp16.ckpt"),
             ]),
         CatalogModel(
             id: .paintSmall,

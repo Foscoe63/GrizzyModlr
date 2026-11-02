@@ -79,3 +79,22 @@ swift run -c release hy3d-cli mesh 256 dense  # force the dense grid path (~79s)
 Parity fixtures (DiT/VAE/DINO inputs+outputs, and the denoise noise/sigmas) are dumped from the
 Python reference via `scripts/dump_swift_fixtures.py`; the mesh path reads the bundled demo image
 directly through `Preprocess.swift`.
+
+## Hunyuan3D 2.1 shape (`DiT21`, DINOv2-large, existing `VAE`)
+
+`ShapeGenerator` recognises 2.1 checkpoints by their weight names (`blocks.0.attn1.to_q.weight`) and builds
+`DiT21` (Hunyuan-DiT, 21 blocks, MoE in the last 6) + `DINOv2` large (GELU MLP). The 2.1 VAE decoder is the
+same network as before (no qkv bias, qk-norm, 4096 latents), so `VAE` is reused.
+
+Per-module parity against the PyTorch reference (fp32 CPU; fixed random inputs; fp16 weights in Swift),
+from `Tools/h3d21` (`h3d21 parity`; the XCTest host cannot read the external models drive):
+
+| module | cosine | max abs |
+|---|---|---|
+| DINOv2-large `[1,1370,1024]` | 0.999998 | 0.064 |
+| VAE decode `[1,4096,1024]` | 0.999999 | 1.0 (values ~O(100)) |
+| VAE geo-decoder SDF `[1,2048,1]` | 1.000000 | 6.7e-5 |
+| DiT21 `[1,4096,64]` | 0.999995 | 0.041 |
+
+End to end (`h3d21 e2e 004 128`, same preprocessed pixels and noise, 30 steps, CFG 5, res 128): mesh Chamfer
+vs the PyTorch reference mesh is 0.17% of the bounding-box diagonal (51,658 vs 51,693 vertices).

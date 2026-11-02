@@ -470,6 +470,7 @@ struct ProjectDetailView: View {
         runtime.state.installState(.shapeSmall).isInstalled
             || runtime.state.installState(.shapeLarge).isInstalled
             || runtime.state.installState(.shapeFull).isInstalled
+            || runtime.state.installState(.shapeV21).isInstalled
     }
     private var anyPaintModelInstalled: Bool {
         runtime.state.installState(.paintSmall).isInstalled

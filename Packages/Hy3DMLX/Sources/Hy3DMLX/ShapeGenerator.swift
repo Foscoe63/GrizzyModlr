@@ -5,8 +5,8 @@ import MLX
 /// High-level, app-facing entry point: load a 2mini checkpoint once, then turn a photo into a mesh
 /// entirely on-device (MLX) — no Python, no fixtures, no network. Suitable for the iOS sandbox.
 public final class ShapeGenerator {
-    public let dit: DiT
-    public let vae: VAE
+    public let dit: any ShapeDenoiser
+    public let vae: any ShapeDecoder
     public let dino: DINOv2
     public let numLatents: Int
     /// True for Hunyuan3D-2mv checkpoints (config declares the multi-view DINO encoder).
@@ -18,11 +18,18 @@ public final class ShapeGenerator {
     /// `quantize`: 0 = fp16, or 4 / 8 for weights-only quantization of the bulk DiT + DINO linears
     /// (group size 64; VAE, norms, embedders + the projection/skip linears stay fp16). 4-bit cuts
     /// resident weights ~2.5× (≈3.6 GB -> ≈1.4 GB).
-    public init(weightsURL: URL, dtype: DType = .float16, quantize: Int = 0,
-                numLatents: Int = 512, cacheLimitMB: Int = 256) throws {
+    public convenience init(weightsURL: URL, dtype: DType = .float16, quantize: Int = 0,
+                            numLatents: Int = 512, cacheLimitMB: Int = 256) throws {
+        try self.init(weights: try loadArrays(url: weightsURL), configNextTo: weightsURL, dtype: dtype,
+                      quantize: quantize, numLatents: numLatents, cacheLimitMB: cacheLimitMB)
+    }
+
+    /// Build from an already-loaded weight dictionary (keys `model.*`, `vae.*`,
+    /// `conditioner.main_image_encoder.model.*`); `configNextTo` locates the sibling config.yaml.
+    public init(weights: [String: MLXArray], configNextTo weightsURL: URL, dtype: DType = .float16,
+                quantize: Int = 0, numLatents: Int = 512, cacheLimitMB: Int = 256) throws {
         MLX.Memory.cacheLimit = cacheLimitMB * 1024 * 1024    // keep the buffer cache off the jetsam limit
         let cfg = Self.readConfig(weightsURL)                 // per-model DiT shape (mini / 2.0 / turbo)
-        let weights = try loadArrays(url: weightsURL)
         let condPrefix = "conditioner.main_image_encoder.model."
         var dw: [String: MLXArray] = [:], vw: [String: MLXArray] = [:], nw: [String: MLXArray] = [:]
         for (k, v) in weights {
@@ -32,11 +39,23 @@ public final class ShapeGenerator {
             else if k.hasPrefix(condPrefix) { nw[String(k.dropFirst(condPrefix.count))] = w }
         }
         let bits = (quantize == 4 || quantize == 8) ? quantize : 4, group = 64
+        // Hunyuan3D 2.1 (HunYuanDiTPlain + MoE) is recognised by its weight names, not by config.yaml.
+        let isV21 = dw["blocks.0.attn1.to_q.weight"] != nil
         if quantize == 4 || quantize == 8 {
             dw = Self.quantizeWeights(dw, bits: quantize, group: group,
-                skip: ["latent_in", "time_in", "cond_in", "guidance_in", "final_layer", "x_embedder"])
+                skip: isV21 ? ["x_embedder", "t_embedder", "final_layer", ".gate."]
+                            : ["latent_in", "time_in", "cond_in", "guidance_in", "final_layer", "x_embedder"])
             nw = Self.quantizeWeights(nw, bits: quantize, group: group, skip: ["embeddings"])
             eval(Array(dw.values)); eval(Array(nw.values))   // materialize the packed 4-bit, drop fp16
+        }
+        if isV21 {
+            let sf = Self.readScaleFactor(weightsURL) ?? 1.0039506
+            self.dit = DiT21(weights: dw, bits: bits, groupSize: group)
+            self.vae = VAE(weights: vw, scaleFactor: sf)
+            self.dino = DINOv2(weights: nw, heads: 16, layers: 24, bits: bits, groupSize: group)
+            self.numLatents = 4096
+            self.isMultiView = false
+            return
         }
         self.dit = DiT(weights: dw, depth: cfg?.depth ?? 8, depthSingle: cfg?.depthSingle ?? 16,
                        guidanceEmbed: cfg?.guidanceEmbed ?? false, bits: bits, groupSize: group)
@@ -54,6 +73,17 @@ public final class ShapeGenerator {
     static func declaresMultiView(_ weightsURL: URL) -> Bool {
         let url = weightsURL.deletingLastPathComponent().appendingPathComponent("config.yaml")
         return ((try? String(contentsOf: url, encoding: .utf8))?.contains("DinoImageEncoderMV")) ?? false
+    }
+
+    /// `scale_factor` from config.yaml (first occurrence = the VAE section).
+    static func readScaleFactor(_ weightsURL: URL) -> Float? {
+        let url = weightsURL.deletingLastPathComponent().appendingPathComponent("config.yaml")
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        for raw in text.split(separator: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("scale_factor:") { return Float(line.dropFirst(13).trimmingCharacters(in: .whitespaces)) }
+        }
+        return nil
     }
 
     struct ModelConfig { let depth: Int; let depthSingle: Int; let guidanceEmbed: Bool; let numLatents: Int; let scaleFactor: Float }
@@ -107,13 +137,24 @@ public final class ShapeGenerator {
                          onPreview: ((Mesh) -> Void)? = nil,
                          onProgress: ((Progress) -> Void)? = nil) -> Mesh? {
         guard let pix = Preprocess.dinoPixels(cgImage: image) else { return nil }
+        return generate(pixels: pix, steps: steps, guidance: guidance, seed: seed, resolution: resolution,
+                        octree: octree, isCancelled: isCancelled, onPreview: onPreview, onProgress: onProgress)
+    }
+
+    /// Same as `generate(image:)` from already-preprocessed DINO pixels (NHWC, ImageNet-normalised).
+    /// `noise` overrides the seeded initial latent (used for reference comparisons).
+    public func generate(pixels pix: MLXArray, noise: MLXArray? = nil, steps: Int = 30, guidance: Float = 5.0,
+                         seed: UInt64 = 0, resolution: Int = 256, octree: Bool = true,
+                         isCancelled: () -> Bool = { false },
+                         onPreview: ((Mesh) -> Void)? = nil,
+                         onProgress: ((Progress) -> Void)? = nil) -> Mesh? {
         if isCancelled() { return nil }
         onProgress?(.init(stage: "Conditioning image", fraction: 0.05))
         // Turbo/distilled models embed guidance and skip CFG → conditional embedding only.
         let embed = dino(pix)
         let cond = dit.guidanceEmbed ? embed : concatenated([embed, dino.unconditional(1)], axis: 0)
         eval(cond)
-        return generate(cond: cond, steps: steps, guidance: guidance, seed: seed, resolution: resolution,
+        return generate(cond: cond, noise: noise, steps: steps, guidance: guidance, seed: seed, resolution: resolution,
                         octree: octree, isCancelled: isCancelled, onPreview: onPreview, onProgress: onProgress)
     }
 
@@ -145,13 +186,13 @@ public final class ShapeGenerator {
                         octree: octree, isCancelled: isCancelled, onPreview: onPreview, onProgress: onProgress)
     }
 
-    private func generate(cond: MLXArray, steps: Int, guidance: Float, seed: UInt64, resolution: Int,
+    private func generate(cond: MLXArray, noise noiseOverride: MLXArray? = nil, steps: Int, guidance: Float, seed: UInt64, resolution: Int,
                           octree: Bool, isCancelled: () -> Bool, onPreview: ((Mesh) -> Void)?,
                           onProgress: ((Progress) -> Void)?) -> Mesh? {
         if isCancelled() { return nil }
 
         let pipe = Pipeline(dit: dit, vae: vae)
-        let noise = Sampler.noise(numLatents: numLatents, seed: seed)
+        let noise = noiseOverride ?? Sampler.noise(numLatents: numLatents, seed: seed)
         let sigmas = dit.guidanceEmbed ? Sampler.consistencySigmas(steps) : Sampler.flowMatchSigmas(steps)
         // Decode a coarse preview from the in-progress latent at a few steps (a meshable
         // surface emerges partway through denoising; earlier steps are skipped when empty).
