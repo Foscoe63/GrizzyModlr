@@ -11,12 +11,17 @@ public struct DINOv2 {
     let layers: Int
     let patchW: MLXArray   // [out, kh, kw, in] for MLX conv2d
     let patch: Int
+    /// Hidden width (1536 for giant, 1024 for the Hunyuan3D 2.1 large encoder).
+    public let hidden: Int
+    let plainMLP: Bool     // large: fc1 -> GELU -> fc2; giant: SwiGLU
     let bits: Int
     let groupSize: Int
 
     public init(weights: [String: MLXArray], heads: Int = 24, layers: Int = 40, patch: Int = 14,
                 bits: Int = 4, groupSize: Int = 64) {
         self.w = weights; self.heads = heads; self.layers = layers; self.patch = patch
+        self.plainMLP = weights["encoder.layer.0.mlp.fc1.weight"] != nil
+        self.hidden = weights["embeddings.cls_token"]!.dim(-1)
         self.bits = bits; self.groupSize = groupSize
         // safetensors stores NCHW [out,in,kh,kw]; MLX conv2d wants [out,kh,kw,in]
         self.patchW = weights["embeddings.patch_embeddings.projection.weight"]!.transposed(0, 2, 3, 1)
@@ -50,6 +55,10 @@ public struct DINOv2 {
         return lin(Layers.silu(hpair[0]) * hpair[1], "\(p).weights_out")
     }
 
+    private func plain(_ x: MLXArray, _ p: String) -> MLXArray {
+        lin(Layers.geluErf(lin(x, "\(p).fc1")), "\(p).fc2")
+    }
+
     /// pixels NHWC [B,518,518,3] -> last_hidden_state [B,1370,1536]
     public func callAsFunction(_ pixels: MLXArray) -> MLXArray {
         let B = pixels.dim(0)
@@ -62,12 +71,12 @@ public struct DINOv2 {
         for i in 0 ..< layers {
             let lp = "encoder.layer.\(i)"
             x = x + g("\(lp).layer_scale1.lambda1") * attn(ln(x, "\(lp).norm1"), "\(lp).attention")
-            x = x + g("\(lp).layer_scale2.lambda1") * swiglu(ln(x, "\(lp).norm2"), "\(lp).mlp")
+            x = x + g("\(lp).layer_scale2.lambda1") * (plainMLP ? plain : swiglu)(ln(x, "\(lp).norm2"), "\(lp).mlp")
         }
         return ln(x, "layernorm")
     }
 
-    public func unconditional(_ batch: Int, tokens: Int = 1370, hidden: Int = 1536) -> MLXArray {
-        MLXArray.zeros([batch, tokens, hidden])
+    public func unconditional(_ batch: Int, tokens: Int = 1370, hidden: Int? = nil) -> MLXArray {
+        MLXArray.zeros([batch, tokens, hidden ?? self.hidden])
     }
 }

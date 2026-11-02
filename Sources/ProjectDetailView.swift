@@ -472,6 +472,7 @@ struct ProjectDetailView: View {
             || runtime.state.installState(.shapeFull).isInstalled
             || (runtime.state.installState(.shapeTrellis2).isInstalled && runtime.state.installState(.dinov3).isInstalled)
             || (runtime.state.installState(.shapePixal3d).isInstalled && runtime.state.installState(.dinov3).isInstalled)
+            || runtime.state.installState(.shapeV21).isInstalled
     }
     private var anyPaintModelInstalled: Bool {
         runtime.state.installState(.paintSmall).isInstalled

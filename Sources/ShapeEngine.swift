@@ -37,6 +37,26 @@ final class ShapeEngine {
         func cancel() { lock.lock(); _cancelled = true; lock.unlock() }
     }
 
+    /// Safetensors checkpoints load directly; Hunyuan3D 2.1 ships as a torch pickle (`model.fp16.ckpt`)
+    /// whose tensors are read in place and handed to the generator without writing a converted copy.
+    private static func loadGenerator(weightsURL: URL, quantize: Int) throws -> ShapeGenerator {
+        guard weightsURL.pathExtension == "ckpt" else {
+            return try ShapeGenerator(weightsURL: weightsURL, quantize: quantize)
+        }
+        var weights: [String: MLXArray] = [:]
+        for (name, t) in try TorchCheckpoint.load(weightsURL) {
+            let dtype: DType
+            switch t.dtype {
+            case "float16": dtype = .float16
+            case "bfloat16": dtype = .bfloat16
+            case "float32": dtype = .float32
+            default: continue
+            }
+            weights[name] = MLXArray(t.bytes(), t.shape, dtype: dtype)
+        }
+        return try ShapeGenerator(weights: weights, configNextTo: weightsURL, quantize: quantize)
+    }
+
     /// Mirrors the old `GenerationService.run` contract: callbacks may arrive on a
     /// background queue; the caller hops to the main actor.
     @discardableResult
@@ -62,7 +82,7 @@ final class ShapeEngine {
             }
 
             // TripoSR (a torch checkpoint) takes its own single-pass route.
-            if weightsURL.pathExtension == "ckpt" {
+            if weightsURL.lastPathComponent == "model.ckpt" {
                 self.runTripo(image: cg, run: run, weights: weightsURL, resolution: resolution, output: output,
                               onProgress: onProgress, onFinish: onFinish)
                 return
@@ -78,7 +98,7 @@ final class ShapeEngine {
                 self.cachedKey = nil
                 self.cachedGen = nil                 // free the previous model before loading a new one
                 do {
-                    gen = try ShapeGenerator(weightsURL: weightsURL, quantize: quantize)
+                    gen = try Self.loadGenerator(weightsURL: weightsURL, quantize: quantize)
                 } catch {
                     onFinish(.failure("Couldn't load the model: \(error.localizedDescription)"))
                     return

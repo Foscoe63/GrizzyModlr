@@ -84,12 +84,24 @@ public enum TorchCheckpoint {
         let root = try unpickler.run()
         guard case .dict(let items) = root else { throw Failure.malformed("top level is not a dict") }
         var out: [String: TensorRef] = [:]
-        for (k, v) in items {
-            guard case .string(let name) = k else { continue }
-            if case .tensor(let t) = v { out[name] = TensorRef(name: name, dtype: t.dtype, shape: t.shape, strides: t.strides,
-                                                               storageOffset: t.offset, storage: t.storage) }
-        }
+        Self.collect(items, prefix: "", into: &out)
         return out
+    }
+
+    /// Tensors of a (possibly nested) dict; nested keys are joined with ".", so a checkpoint saved as
+    /// `{"model": {...}, "vae": {...}}` yields `model.<name>`, `vae.<name>`.
+    private static func collect(_ items: [(Value, Value)], prefix: String, into out: inout [String: TensorRef]) {
+        for (k, v) in items {
+            guard case .string(let key) = k else { continue }
+            let name = prefix + key
+            switch v {
+            case .tensor(let t):
+                out[name] = TensorRef(name: name, dtype: t.dtype, shape: t.shape, strides: t.strides,
+                                      storageOffset: t.offset, storage: t.storage)
+            case .dict(let sub): collect(sub, prefix: name + ".", into: &out)
+            default: break
+            }
+        }
     }
 
     // MARK: zip

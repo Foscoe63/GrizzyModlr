@@ -11,7 +11,7 @@ public struct DiT {
     let depth: Int
     let depthSingle: Int
     let timeFactor: Float
-    let guidanceEmbed: Bool
+    public let guidanceEmbed: Bool
     let bits: Int
     let groupSize: Int
 

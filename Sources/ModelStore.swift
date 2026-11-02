@@ -95,7 +95,7 @@ enum ModelStore {
             return isInstalled(.dinov3) ? installDir(for: model.modelID) : nil
         }
         // TripoSR ships as a torch checkpoint; the Hunyuan models as fp16 safetensors.
-        return installDir(for: model.modelID).appendingPathComponent(model == .fast ? "model.ckpt" : "model.fp16.safetensors")
+        return installDir(for: model.modelID).appendingPathComponent(model == .fast ? "model.ckpt" : (model == .v21 ? "model.fp16.ckpt" : "model.fp16.safetensors"))
     }
 
     /// Install directory of the Zero123++ weights (diffusers layout); nil unless fully installed.

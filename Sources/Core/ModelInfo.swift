@@ -27,6 +27,8 @@ extension ModelID {
         case .shapeSmall:     return ModelInfo(category: .shape, usedFor: "Generate · the Small shape model (fastest)", license: tencent)
         case .shapeLarge:     return ModelInfo(category: .shape, usedFor: "Generate · the Large shape model (turbo, high detail)", license: tencent)
         case .shapeFull:      return ModelInfo(category: .shape, usedFor: "Generate · the Full shape model (most detail, many steps, slowest)", license: tencent)
+        case .shapeV21:       return ModelInfo(category: .shape, usedFor: "Generate · the 2.1 shape model (most detail, 7.4 GB, heaviest)",
+                                               license: "Tencent Hunyuan 3D 2.1 Community (not licensed in the EU, UK or South Korea)")
         case .shapeMultiView: return ModelInfo(category: .shape, usedFor: "Generate · used automatically when a project has two or more reference views", license: tencent)
         case .triposr:        return ModelInfo(category: .shape, usedFor: "Generate · the Fast shape model", license: "MIT")
         case .shapeTrellis2:  return ModelInfo(category: .shape, usedFor: "Generate · the TRELLIS.2 shape model (512 level, geometry only; needs DINOv3)", license: "MIT")
