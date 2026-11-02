@@ -112,6 +112,23 @@ final class MeshBooleanTests: XCTestCase {
 
     /// A box cut by an off-grid box: sharp placement lands the corners on the true extent,
     /// while the plain mean rounds them inward by a good fraction of a voxel.
+    /// A pinhole (one triangle missing) must not flip the inside/outside of every voxel behind it along
+    /// one ray: generated shapes have such holes, and the single-axis parity streaked them into terraces.
+    func testPinholeDoesNotStreakRemesh() throws {
+        var (p, f) = sphere(radius: 1, seg: 32)
+        f.remove(at: f.count / 2 + 7)
+        let g = MeshBoolean.grid(lo: SIMD3(repeating: -1), hi: SIMD3(repeating: 1), resolution: 48)
+        let field = MeshBoolean.meshField(positions: p, faces: f, grid: g)
+        var wrong = 0
+        for k in 0..<g.nz { for j in 0..<g.ny { for i in 0..<g.nx {
+            let r = simd_length(g.position(i, j, k))
+            if r < 0.8, field[g.index(i, j, k)] > 0 { wrong += 1 }          // well inside must be negative
+            if r > 1.2, field[g.index(i, j, k)] < 0 { wrong += 1 }          // well outside must be positive
+        } } }
+        XCTAssertEqual(wrong, 0, "pinhole flipped \(wrong) voxels away from the surface")
+        _ = p; p = []
+    }
+
     func testSharpPlacementKeepsBoxCorners() throws {
         let a = box(half: 1)
         let operand = MeshBoolean.Operand(kind: .primitive(.box, center: [0.37, 0, 0], size: 1))

@@ -1,4 +1,6 @@
 import XCTest
+import CoreGraphics
+import ImageIO
 import MLX
 @testable import Hy3DMLX
 
@@ -45,11 +47,35 @@ final class TRELLIS2PipelineTests: XCTestCase {
             naf: px + "/naf/naf.safetensors")
         try XCTSkipUnless(FileManager.default.fileExists(atPath: paths.shapeFlow512) && FileManager.default.fileExists(atPath: img), "Pixal3D weights/image not installed")
         let border: Float = 1 - 1 / 1.1
-        let npx = try XCTUnwrap(Preprocess.dinoPixels(img, size: 512, border: border, background: 0))
-        let raw = try XCTUnwrap(Preprocess.dinoPixels(img, size: 512, border: border, background: 0, normalize: false))
+        let env = ProcessInfo.processInfo.environment
+        var npx: MLXArray, raw: MLXArray
+        if env["PIXAL3D_ROUNDTRIP"] == "1" {
+            // what ShapeEngine.runTrellis does to a cutout before preprocessing: premultiplied redraw, un-premultiply, re-wrap
+            let src = try XCTUnwrap(CGImageSourceCreateWithURL(URL(fileURLWithPath: img) as CFURL, nil))
+            let cg0 = try XCTUnwrap(CGImageSourceCreateImageAtIndex(src, 0, nil))
+            let w = cg0.width, h = cg0.height
+            var buf = [UInt8](repeating: 0, count: w * h * 4)
+            buf.withUnsafeMutableBytes { rawBuf in
+                let ctx = CGContext(data: rawBuf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                    space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+                ctx.draw(cg0, in: CGRect(x: 0, y: 0, width: w, height: h))
+            }
+            for i in 0 ..< w * h {
+                let a = Int(buf[i * 4 + 3])
+                if a > 0 && a < 255 { for c in 0 ..< 3 { buf[i * 4 + c] = UInt8(min(255, Int(buf[i * 4 + c]) * 255 / a)) } }
+            }
+            let provider = CGDataProvider(data: Data(buf) as CFData)!
+            let cg = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
+                             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
+                             provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)!
+            npx = try XCTUnwrap(Preprocess.dinoPixels(cgImage: cg, size: 512, border: border, background: 0))
+            raw = try XCTUnwrap(Preprocess.dinoPixels(cgImage: cg, size: 512, border: border, background: 0, normalize: false))
+        } else {
+            npx = try XCTUnwrap(Preprocess.dinoPixels(img, size: 512, border: border, background: 0))
+            raw = try XCTUnwrap(Preprocess.dinoPixels(img, size: 512, border: border, background: 0, normalize: false))
+        }
         let t0 = Date()
         var o = Pixal3DPipeline.Options()
-        let env = ProcessInfo.processInfo.environment
         if let v = env["PIXAL3D_STEPS"], let n = Int(v) { o.steps = n }
         if let v = env["PIXAL3D_SEED"], let n = UInt64(v) { o.seed = n }
         if let v = env["PIXAL3D_FOV"], let x = Float(v) { o.fov = x }
