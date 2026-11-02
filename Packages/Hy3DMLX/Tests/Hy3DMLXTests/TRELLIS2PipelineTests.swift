@@ -48,10 +48,15 @@ final class TRELLIS2PipelineTests: XCTestCase {
         let npx = try XCTUnwrap(Preprocess.dinoPixels(img, size: 512, border: border, background: 0))
         let raw = try XCTUnwrap(Preprocess.dinoPixels(img, size: 512, border: border, background: 0, normalize: false))
         let t0 = Date()
-        let m = try Pixal3DPipeline(paths: paths).run(pixels: npx, image01: raw)
+        var o = Pixal3DPipeline.Options()
+        let env = ProcessInfo.processInfo.environment
+        if let v = env["PIXAL3D_STEPS"], let n = Int(v) { o.steps = n }
+        if let v = env["PIXAL3D_SEED"], let n = UInt64(v) { o.seed = n }
+        if let v = env["PIXAL3D_FOV"], let x = Float(v) { o.fov = x }
+        let m = try Pixal3DPipeline(paths: paths).run(pixels: npx, image01: raw, options: o)
         print("Pixal3D 512: \(m.vertices.count / 3) verts, \(m.faces.count / 3) faces, \(Date().timeIntervalSince(t0)) s, peak MLX \(GPU.peakMemory >> 20) MB")
         let out = root + "/out"; try FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
-        try Self.writeOBJ(m.vertices, m.faces, to: out + "/pixal3d_512.obj")
+        try Self.writeOBJ(m.vertices, m.faces, to: out + "/pixal3d_512" + (env["PIXAL3D_TAG"] ?? "") + ".obj")
         XCTAssertGreaterThan(m.faces.count, 1000)
     }
 }
