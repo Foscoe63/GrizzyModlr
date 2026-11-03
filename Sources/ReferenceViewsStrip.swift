@@ -68,12 +68,14 @@ struct ReferenceViewsStrip: View {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(Color.black.opacity(0.18))
                         if let url, let img = NSImage(contentsOf: url) {
-                            Image(nsImage: img).resizable().scaledToFit().padding(3)
+                            Image(nsImage: img).resizable().scaledToFill()
+                                .frame(width: 54, height: 54).clipped()
                         } else {
                             Image(systemName: "plus").foregroundStyle(.secondary)
                         }
                     }
                     .frame(width: 54, height: 54)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .strokeBorder(targeted == view ? Color.accentColor : .white.opacity(0.1),
                                       lineWidth: targeted == view ? 2 : 1))
