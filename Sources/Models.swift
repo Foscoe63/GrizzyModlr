@@ -3,7 +3,7 @@ import Foundation
 /// The shape checkpoint to generate with (DESIGN.md §2): Small = 2mini (0.6B,
 /// 30-step CFG), Large = 2.0-turbo (1.1B distilled, 8-step consistency).
 enum ShapeModel: String, CaseIterable, Identifiable {
-    case small, large, full, v21, fast
+    case small, large, full, v21, fast, trellis2, pixal3d
 
     var id: String { rawValue }
 
@@ -14,6 +14,8 @@ enum ShapeModel: String, CaseIterable, Identifiable {
         case .full: return "Full"
         case .v21: return "2.1"
         case .fast: return "Fast"
+        case .trellis2: return "TRELLIS.2"
+        case .pixal3d: return "Pixal3D"
         }
     }
 
@@ -24,6 +26,8 @@ enum ShapeModel: String, CaseIterable, Identifiable {
         case .full: return "2.0 full · 1.1B · best detail, slower"
         case .v21: return "2.1 · 3.1B MoE · most detail, heaviest"
         case .fast: return "TripoSR · seconds · lower detail"
+        case .trellis2: return "TRELLIS.2 · 512 sparse flow · detailed, ~1 min"
+        case .pixal3d: return "Pixal3D · pixel-aligned to your photo · ~1 min"
         }
     }
 
@@ -34,6 +38,8 @@ enum ShapeModel: String, CaseIterable, Identifiable {
         case .full: return .shapeFull
         case .v21: return .shapeV21
         case .fast: return .triposr
+        case .trellis2: return .shapeTrellis2
+        case .pixal3d: return .shapePixal3d
         }
     }
 
@@ -45,6 +51,7 @@ enum ShapeModel: String, CaseIterable, Identifiable {
         case .full: return 50
         case .v21: return 50
         case .fast: return 1
+        case .trellis2, .pixal3d: return 12
         }
     }
 
@@ -57,6 +64,8 @@ enum ShapeModel: String, CaseIterable, Identifiable {
         case "full": self = .full
         case "v21": self = .v21
         case "fast": self = .fast
+        case "trellis2": self = .trellis2
+        case "pixal3d": self = .pixal3d
         default: self = .small
         }
     }
@@ -156,6 +165,7 @@ enum QualityPreset: String, CaseIterable, Identifiable {
         case .large: return [4, 6, 8, 10, 12][index]
         case .full, .v21: return [20, 30, 40, 50, 60][index]
         case .fast: return [1, 1, 1, 1, 1][index]
+        case .trellis2, .pixal3d: return [6, 9, 12, 16, 20][index]
         }
     }
 

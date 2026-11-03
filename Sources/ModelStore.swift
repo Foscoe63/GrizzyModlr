@@ -90,6 +90,10 @@ enum ModelStore {
     /// nil unless the model is fully installed.
     static func shapeWeightsFile(for model: ShapeModel) -> URL? {
         guard isInstalled(model.modelID) else { return nil }
+        // TRELLIS.2 / Pixal3D are a folder of checkpoints and also need the DINOv3 encoder.
+        if model == .trellis2 || model == .pixal3d {
+            return isInstalled(.dinov3) ? installDir(for: model.modelID) : nil
+        }
         // TripoSR ships as a torch checkpoint; the Hunyuan models as fp16 safetensors.
         return installDir(for: model.modelID).appendingPathComponent(model == .fast ? "model.ckpt" : (model == .v21 ? "model.fp16.ckpt" : "model.fp16.safetensors"))
     }

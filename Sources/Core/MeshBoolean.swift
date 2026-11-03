@@ -67,40 +67,77 @@ enum MeshBoolean {
                 if d < dist[idx] { dist[idx] = d }
             } } }
         }
-        // 2) inside/outside by parity of +x ray crossings per (y, z) column
-        var crossings = [[Float]](repeating: [], count: g.ny * g.nz)
+        // 2) inside/outside by parity of ray crossings, voted over the x, y and z axes. A single pinhole or
+        //    fold flips every voxel behind it along one ray; the other two axes outvote it, so the damage
+        //    stays local instead of streaking a whole row (the horizontal terraces on generated shapes).
+        let ix = insideByParity(positions: positions, faces: faces, grid: g, axis: 0)
+        let iy = insideByParity(positions: positions, faces: faces, grid: g, axis: 1)
+        let iz = insideByParity(positions: positions, faces: faces, grid: g, axis: 2)
+        var inside = [Bool](repeating: false, count: g.count)
+        for n in 0..<g.count { inside[n] = (ix[n] ? 1 : 0) + (iy[n] ? 1 : 0) + (iz[n] ? 1 : 0) >= 2 }
+        // 3) One-voxel flips left after the vote (a hole's neighbourhood) would surface as specks and dimples;
+        //    a voxel whose six face neighbours (almost) all disagree with it takes their value.
+        let settled = despeckle(inside, g)
+        for n in 0..<g.count where settled[n] { dist[n] = -dist[n] }
+        return dist
+    }
+
+    /// Flips voxels that at least 5 of their 6 face neighbours disagree with (isolated blips and one-voxel dents).
+    static func despeckle(_ inside: [Bool], _ g: Grid) -> [Bool] {
+        var out = inside
+        for z in 1..<max(1, g.nz - 1) { for y in 1..<max(1, g.ny - 1) { for x in 1..<max(1, g.nx - 1) {
+            let n = g.index(x, y, z), me = inside[n]
+            var other = 0
+            if inside[n - 1] != me { other += 1 }
+            if inside[n + 1] != me { other += 1 }
+            if inside[n - g.nx] != me { other += 1 }
+            if inside[n + g.nx] != me { other += 1 }
+            if inside[n - g.nx * g.ny] != me { other += 1 }
+            if inside[n + g.nx * g.ny] != me { other += 1 }
+            if other >= 5 { out[n] = !me }
+        } } }
+        return out
+    }
+
+    /// Per-voxel inside flag from the parity of crossings along +`axis` rays (0 = x, 1 = y, 2 = z), one ray per
+    /// grid column. An odd crossing count (open mesh, overlap) drops the last crossing on that ray.
+    static func insideByParity(positions: [SIMD3<Float>], faces: [SIMD3<UInt32>], grid g: Grid, axis: Int) -> [Bool] {
+        let dims = [g.nx, g.ny, g.nz]
+        let b = (axis + 1) % 3, c = (axis + 2) % 3                    // the two axes spanning a column
+        let nb = dims[b], nc = dims[c], na = dims[axis]
+        var crossings = [[Float]](repeating: [], count: nb * nc)
         let eps = SIMD2<Float>(1.0e-3, 1.7e-3) * g.cell              // dodge exact edge hits
         for f in faces {
-            let a = positions[Int(f.x)], b = positions[Int(f.y)], c = positions[Int(f.z)]
-            let lo = simd_min(a, simd_min(b, c)), hi = simd_max(a, simd_max(b, c))
+            let a = positions[Int(f.x)], bb = positions[Int(f.y)], cc = positions[Int(f.z)]
+            let lo = simd_min(a, simd_min(bb, cc)), hi = simd_max(a, simd_max(bb, cc))
             // Slack of 0.01 cell keeps triangles whose edge lies on a grid line (float error
             // would otherwise drop them); the barycentric test still decides the hit.
-            let j0 = max(0, Int((((lo.y - g.origin.y) / g.cell) - 0.01).rounded(.up))), j1 = min(g.ny - 1, Int((((hi.y - g.origin.y) / g.cell) + 0.01).rounded(.down)))
-            let k0 = max(0, Int((((lo.z - g.origin.z) / g.cell) - 0.01).rounded(.up))), k1 = min(g.nz - 1, Int((((hi.z - g.origin.z) / g.cell) + 0.01).rounded(.down)))
+            let j0 = max(0, Int((((lo[b] - g.origin[b]) / g.cell) - 0.01).rounded(.up))), j1 = min(nb - 1, Int((((hi[b] - g.origin[b]) / g.cell) + 0.01).rounded(.down)))
+            let k0 = max(0, Int((((lo[c] - g.origin[c]) / g.cell) - 0.01).rounded(.up))), k1 = min(nc - 1, Int((((hi[c] - g.origin[c]) / g.cell) + 0.01).rounded(.down)))
             guard j0 <= j1, k0 <= k1 else { continue }
-            let det = (b.y - a.y) * (c.z - a.z) - (c.y - a.y) * (b.z - a.z)
+            let det = (bb[b] - a[b]) * (cc[c] - a[c]) - (cc[b] - a[b]) * (bb[c] - a[c])
             guard abs(det) > 1e-20 else { continue }                   // edge-on to the ray
             for k in k0...k1 { for j in j0...j1 {
-                let py = g.origin.y + Float(j) * g.cell + eps.x, pz = g.origin.z + Float(k) * g.cell + eps.y
-                let u = ((py - a.y) * (c.z - a.z) - (c.y - a.y) * (pz - a.z)) / det
-                let v = ((b.y - a.y) * (pz - a.z) - (py - a.y) * (b.z - a.z)) / det
+                let pb = g.origin[b] + Float(j) * g.cell + eps.x, pc = g.origin[c] + Float(k) * g.cell + eps.y
+                let u = ((pb - a[b]) * (cc[c] - a[c]) - (cc[b] - a[b]) * (pc - a[c])) / det
+                let v = ((bb[b] - a[b]) * (pc - a[c]) - (pb - a[b]) * (bb[c] - a[c])) / det
                 guard u >= 0, v >= 0, u + v <= 1 else { continue }
-                crossings[k * g.ny + j].append(a.x + u * (b.x - a.x) + v * (c.x - a.x))
+                crossings[k * nb + j].append(a[axis] + u * (bb[axis] - a[axis]) + v * (cc[axis] - a[axis]))
             } }
         }
-        for k in 0..<g.nz { for j in 0..<g.ny {
-            var xs = crossings[k * g.ny + j].sorted()
-            // An odd count means the mesh is open or self-overlapping on this ray; left alone the last
-            // crossing would make everything beyond it "inside" (a bar out to the grid edge).
+        var inside = [Bool](repeating: false, count: g.count)
+        var ijk = [0, 0, 0]
+        for k in 0..<nc { for j in 0..<nb {
+            var xs = crossings[k * nb + j].sorted()
             if xs.count % 2 == 1 { xs.removeLast() }
-            var p = 0, inside = false
-            for i in 0..<g.nx {
-                let x = g.origin.x + Float(i) * g.cell
-                while p < xs.count, xs[p] <= x { inside.toggle(); p += 1 }
-                if inside { dist[g.index(i, j, k)] = -dist[g.index(i, j, k)] }
+            var p = 0, inn = false
+            for i in 0..<na {
+                let x = g.origin[axis] + Float(i) * g.cell
+                while p < xs.count, xs[p] <= x { inn.toggle(); p += 1 }
+                if inn { ijk[axis] = i; ijk[b] = j; ijk[c] = k; inside[g.index(ijk[0], ijk[1], ijk[2])] = true }
             }
         } }
-        return dist
+        return inside
     }
 
     /// Analytic SDF of a primitive centered at `center`; `size` is the radius / half-extent.

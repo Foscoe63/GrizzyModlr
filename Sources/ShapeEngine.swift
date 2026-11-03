@@ -74,6 +74,13 @@ final class ShapeEngine {
                 onFinish(.failure("Couldn't read the input image.")); return
             }
 
+            // TRELLIS.2 / Pixal3D: a folder of checkpoints, own pipeline, no octree grid.
+            if weightsURL.hasDirectoryPath {
+                self.runTrellis(image: cg, run: run, dir: weightsURL, steps: steps, guidance: guidance, seed: seed, output: output,
+                                onProgress: onProgress, onFinish: onFinish)
+                return
+            }
+
             // TripoSR (a torch checkpoint) takes its own single-pass route.
             if weightsURL.lastPathComponent == "model.ckpt" {
                 self.runTripo(image: cg, run: run, weights: weightsURL, resolution: resolution, output: output,
@@ -175,6 +182,104 @@ final class ShapeEngine {
                 cont.resume()
             }
         }
+    }
+
+    // MARK: TRELLIS.2 / Pixal3D
+
+    /// Writes `naf.safetensors` beside the Pixal3D weights from the downloaded torch checkpoint (once).
+    private static func ensureNAF(in dir: URL) throws -> URL {
+        let out = dir.appendingPathComponent("naf.safetensors")
+        if FileManager.default.fileExists(atPath: out.path) { return out }
+        let refs = try TorchCheckpoint.load(dir.appendingPathComponent("naf_release.pth"))
+        var arrays: [String: MLXArray] = [:]
+        for (name, r) in refs where r.dtype == "float32" { arrays[name] = MLXArray(r.bytes(), r.shape, dtype: .float32) }
+        try save(arrays: arrays, url: out)
+        return out
+    }
+
+    /// TRELLIS.2 or Pixal3D (picked by the files in `dir`) at the 512 level: image → mesh in one run, then written
+    /// y-up like the other shape models. Loads weights per stage and frees them, peak ~9 GB.
+    private func runTrellis(image cg: CGImage, run: Run, dir: URL, steps: Int, guidance: Float, seed: UInt64, output: URL,
+                            onProgress: @escaping (String, String?, Double?) -> Void,
+                            onFinish: @escaping (GenerationOutcome) -> Void) {
+        defer { MLX.GPU.clearCache() }
+        cachedKey = nil; cachedGen = nil; cachedTSR = nil          // one big model at a time
+        func f(_ n: String) -> String { dir.appendingPathComponent(n).path }
+        // Opaque photos get the same automatic subject cutout as the Fast model; cutouts pass through.
+        var cg = cg
+        if let (rgba, w, h) = Self.subjectRGBA(cg), let provider = CGDataProvider(data: Data(rgba) as CFData),
+           let matted = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
+                                space: CGColorSpaceCreateDeviceRGB(),
+                                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
+                                provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent) {
+            cg = matted
+        }
+        let dino = ModelStore.installDir(for: .dinov3).appendingPathComponent("model.safetensors").path
+        let hooks = PipelineHooks(progress: { stage, frac in onProgress(stage, nil, frac) }, isCancelled: { run.cancelled })
+        let isPixal = FileManager.default.fileExists(atPath: f("naf_release.pth"))
+        do {
+            let verts: [Float], faces: [Int32]
+            if isPixal {
+                var o = Pixal3DPipeline.Options()
+                o.seed = seed; o.steps = steps; o.guidance = guidance
+                o.fov = Float(ToolDefaults.pixal3dFOV())
+                let border: Float = 1 - 1 / 1.1
+                guard let px = Preprocess.dinoPixels(cgImage: cg, size: 512, border: border, background: 0),
+                      let raw = Preprocess.dinoPixels(cgImage: cg, size: 512, border: border, background: 0, normalize: false) else {
+                    onFinish(.failure("Couldn't prepare the image.")); return
+                }
+                let paths = Pixal3DPipeline.Paths(dino: dino, ssFlow: f("ss_flow.safetensors"), ssDecoder: f("ss_dec.safetensors"),
+                                                  shapeFlow512: f("shape_flow_512.safetensors"), shapeDecoder: f("shape_dec.safetensors"),
+                                                  naf: try Self.ensureNAF(in: dir).path)
+                (verts, faces) = try Pixal3DPipeline(paths: paths).run(pixels: px, image01: raw, options: o, hooks: hooks)
+            } else {
+                var o = TRELLIS2Pipeline.Options()
+                o.seed = seed; o.ssSteps = steps; o.shapeSteps = steps
+                o.ssGuidance = guidance; o.shapeGuidance = guidance
+                guard let px = Preprocess.dinoPixels(cgImage: cg, size: 512, border: 0, background: 0) else {
+                    onFinish(.failure("Couldn't prepare the image.")); return
+                }
+                let paths = TRELLIS2Pipeline.Paths(dino: dino, ssFlow: f("ss_flow.safetensors"), ssDecoder: f("ss_dec.safetensors"),
+                                                   shapeFlow512: f("shape_flow_512.safetensors"), shapeDecoder: f("shape_dec.safetensors"))
+                (verts, faces) = try TRELLIS2Pipeline(paths: paths).run(pixels: px, options: o, hooks: hooks)
+            }
+            if run.cancelled { onFinish(.failure("Cancelled")); return }
+            // TRELLIS.2 meshes are z-up; Pixal3D's are already y-up.
+            let v0 = (0 ..< verts.count / 3).map { i -> SIMD3<Float> in
+                let x = verts[i * 3], y = verts[i * 3 + 1], z = verts[i * 3 + 2]
+                return isPixal ? SIMD3(x, y, z) : SIMD3(x, z, -y)
+            }
+            var t = (0 ..< faces.count / 3).map { SIMD3<UInt32>(UInt32(faces[$0 * 3]), UInt32(faces[$0 * 3 + 1]), UInt32(faces[$0 * 3 + 2])) }
+            var v = v0
+            if ToolDefaults.trellisCleanup() {
+                onProgress("Smoothing", nil, 0.9)
+                (v, t) = Self.cleanVoxelSurface(positions: v, faces: t)
+            }
+            onProgress("Writing mesh", nil, 0.97)
+            try MeshDecimator.serialize(positions: v, faces: t).write(to: output)
+            onFinish(.success)
+        } catch is CancellationError {
+            onFinish(.failure("Cancelled"))
+        } catch {
+            onFinish(.failure("TRELLIS run failed: \(error.localizedDescription)"))
+        }
+    }
+
+    /// Removes the 512-grid stair-steps from a TRELLIS.2 / Pixal3D mesh: smooth, remesh through the
+    /// distance field (skipped when the shape is open), smooth again. Falls back to the smoothed mesh.
+    static func cleanVoxelSurface(positions: [SIMD3<Float>], faces: [SIMD3<UInt32>])
+        -> ([SIMD3<Float>], [SIMD3<UInt32>]) {
+        let iterations = ToolDefaults.trellisCleanupSmooth()
+        var p = MeshOps.smooth(positions: positions, faces: faces, iterations: iterations)
+        var f = faces
+        let res = ToolDefaults.trellisCleanupRemesh()
+        if res >= 48, let r = MeshBoolean.remesh(positions: p, faces: f, resolution: res) {
+            p = MeshOps.smooth(positions: r.positions, faces: r.faces, iterations: max(2, iterations / 3))
+            f = r.faces
+            // Drop stray specks the remesh can leave around noisy regions of the generated shape.
+            (p, f, _) = MeshOps.removeSmallComponents(positions: p, faces: f)
+        }
+        return (p, f)
     }
 
     // MARK: TripoSR

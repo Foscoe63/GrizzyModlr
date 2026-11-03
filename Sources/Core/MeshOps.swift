@@ -51,6 +51,43 @@ enum MeshOps {
         var changed: Bool
     }
 
+    // MARK: - small components
+
+    /// Drops connected pieces whose face count is below `minFraction` of the largest piece's (specks and
+    /// floaters left by a noisy voxel field), then compacts the vertices. Returns the removed piece count.
+    static func removeSmallComponents(positions: Positions, faces: Faces, minFraction: Double = 0.005)
+    -> (positions: Positions, faces: Faces, removed: Int) {
+        var parent = Array(0 ..< positions.count)
+        func find(_ x: Int) -> Int {
+            var x = x
+            while parent[x] != x { parent[x] = parent[parent[x]]; x = parent[x] }
+            return x
+        }
+        for f in faces {
+            let a = find(Int(f.x)), b = find(Int(f.y)), c = find(Int(f.z))
+            parent[b] = a; parent[find(c)] = find(a)
+        }
+        var size: [Int: Int] = [:]
+        for f in faces { size[find(Int(f.x)), default: 0] += 1 }
+        guard let largest = size.values.max() else { return (positions, faces, 0) }
+        let floor = Int((Double(largest) * minFraction).rounded(.up))
+        let keepRoots = Set(size.filter { $0.value >= floor }.keys)
+        let removed = size.count - keepRoots.count
+        guard removed > 0 else { return (positions, faces, 0) }
+        var remap = [Int32](repeating: -1, count: positions.count)
+        var outP = Positions(), outF = Faces()
+        for f in faces where keepRoots.contains(find(Int(f.x))) {
+            var t = f
+            for k in 0 ..< 3 {
+                let old = Int(f[k])
+                if remap[old] < 0 { remap[old] = Int32(outP.count); outP.append(positions[old]) }
+                t[k] = UInt32(remap[old])
+            }
+            outF.append(t)
+        }
+        return (outP, outF, removed)
+    }
+
     // MARK: - smoothing
 
     /// Taubin (λ|μ) smoothing: a shrinking Laplacian pass followed by an inflating

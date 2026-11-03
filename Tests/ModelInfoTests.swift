@@ -15,7 +15,7 @@ final class ModelInfoTests: XCTestCase {
 
     func testSearchMatchesNameLicenseAndRepoAndNeedsEveryWord() {
         XCTAssertEqual(ModelCatalog.search("triposr"), [.triposr])
-        XCTAssertEqual(ModelCatalog.search("apache"), [.depthEstimation])
+        XCTAssertEqual(Set(ModelCatalog.search("apache")), [.depthEstimation, .shapePixal3d])   // Pixal3D bundles NAF (Apache-2.0)
         XCTAssertTrue(ModelCatalog.search("tencent hunyuan").contains(.shapeFull))
         XCTAssertEqual(ModelCatalog.search("zero123 relief"), [])                 // both words must match
         XCTAssertEqual(ModelCatalog.search("  SHAPE   full "), ModelCatalog.search("full shape"))

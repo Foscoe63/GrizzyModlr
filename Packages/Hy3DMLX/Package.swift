@@ -20,6 +20,6 @@ let package = Package(
                 .product(name: "MLXFast", package: "mlx-swift"),
             ]
         ),
-        .testTarget(name: "Hy3DMLXTests", dependencies: ["Hy3DMLX"]),
+        .testTarget(name: "Hy3DMLXTests", dependencies: ["Hy3DMLX"], resources: [.copy("Fixtures")]),
     ]
 )
