@@ -10,6 +10,7 @@ struct ReferenceViewsStrip: View {
     var reloadKey: Int
 
     @State private var importing: ReferenceView?
+    @State private var pickerShown = false
     @State private var targeted: ReferenceView?
     @State private var showSynth = false
     @State private var showTextPanel = false
@@ -50,8 +51,9 @@ struct ReferenceViewsStrip: View {
             SynthesizedViewsSheet(projectID: projectID, onClose: { showSynth = false })
                 .environment(store)
         }
-        .fileImporter(isPresented: Binding(get: { importing != nil }, set: { if !$0 { importing = nil } }),
-                      allowedContentTypes: [.image]) { result in
+        .fileImporter(isPresented: $pickerShown, allowedContentTypes: [.image]) { result in
+            // `importing` stays set until the result arrives: the binding flips to false first.
+            defer { importing = nil }
             guard let view = importing, case .success(let url) = result else { return }
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
@@ -63,7 +65,7 @@ struct ReferenceViewsStrip: View {
         let url = project.flatMap { store.extraViewURL(view, for: $0) }
         return VStack(spacing: 3) {
             ZStack(alignment: .topTrailing) {
-                Button { importing = view } label: {
+                Button { importing = view; pickerShown = true } label: {
                     ZStack {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(Color.black.opacity(0.18))
