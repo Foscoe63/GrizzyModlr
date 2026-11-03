@@ -448,6 +448,36 @@ final class ProjectStore {
         projects[i].quality = q
         save()
     }
+    /// Sets every shape setting of the project's current model to its maximum definition (shown in
+    /// the Advanced settings too). The previous values are kept for `restoreMaxDefinition`.
+    func applyMaxDefinition(for id: Project.ID) {
+        guard let i = projects.firstIndex(where: { $0.id == id }) else { return }
+        if projects[i].maxRestoreRaw == nil {
+            let p = projects[i]
+            projects[i].maxRestoreRaw = SavedShapeSettings(quantRaw: p.quantRaw, advancedModeRaw: p.advancedModeRaw,
+                                                           stepsRaw: p.stepsRaw, guidanceRaw: p.guidanceRaw,
+                                                           octreeRaw: p.octreeRaw)
+        }
+        let max = projects[i].shapeModel.maxDefinition
+        projects[i].advancedMode = true
+        projects[i].quantization = .full
+        projects[i].steps = max.steps
+        projects[i].guidance = 5.0
+        projects[i].octree = max.octree
+        save()
+    }
+
+    func restoreMaxDefinition(for id: Project.ID) {
+        guard let i = projects.firstIndex(where: { $0.id == id }), let old = projects[i].maxRestoreRaw else { return }
+        projects[i].quantRaw = old.quantRaw
+        projects[i].advancedModeRaw = old.advancedModeRaw
+        projects[i].stepsRaw = old.stepsRaw
+        projects[i].guidanceRaw = old.guidanceRaw
+        projects[i].octreeRaw = old.octreeRaw
+        projects[i].maxRestoreRaw = nil
+        save()
+    }
+
     func setSteps(_ n: Int, for id: Project.ID) {
         guard let i = projects.firstIndex(where: { $0.id == id }) else { return }
         projects[i].steps = n

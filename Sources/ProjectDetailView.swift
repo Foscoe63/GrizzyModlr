@@ -542,7 +542,29 @@ struct ProjectDetailView: View {
             } else if project.generations.isEmpty {
                 actionPill("Generate", "play.fill", fill: shapeBlue) { runtime.requestGenerate(project.id) }
             } else {
-                actionPill("Regenerate", "arrow.clockwise", fill: shapeBlue) { runtime.requestGenerate(project.id) }
+                Menu {
+                    Button("Regenerate", systemImage: "arrow.clockwise") { runtime.requestGenerate(project.id) }
+                    Button("Regenerate at max definition (\(project.shapeModel.label))", systemImage: "sparkles") {
+                        runtime.requestGenerateMax(project.id)
+                    }
+                    .help("Sets steps, grid and precision to the maximum for \(project.shapeModel.label), then restores your settings when the run ends")
+                } label: {
+                    Label("Regenerate", systemImage: "arrow.clockwise")
+                        .labelStyle(.titleAndIcon)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(shapeBlue, in: Capsule())
+                } primaryAction: {
+                    runtime.requestGenerate(project.id)
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.visible)
+                .fixedSize()
             }
         }
     }

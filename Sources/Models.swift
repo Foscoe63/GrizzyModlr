@@ -282,6 +282,28 @@ enum GenerationKind: String, Codable { case shape, paint }
 
 /// A single image → 3D shape project. Persisted as JSON; its files live in a
 /// per-project folder under Application Support.
+/// The per-project shape fields that "max definition" overwrites, kept so they can be restored.
+struct SavedShapeSettings: Codable, Hashable {
+    var quantRaw: String?
+    var advancedModeRaw: Bool?
+    var stepsRaw: Int?
+    var guidanceRaw: Double?
+    var octreeRaw: Int?
+}
+
+extension ShapeModel {
+    /// The most detailed settings this model supports (TRELLIS.2 / Pixal3D have no grid, only steps).
+    var maxDefinition: (steps: Int, octree: Int) {
+        switch self {
+        case .small: return (QualityPreset.max.steps(for: .small), 1536)
+        case .large: return (QualityPreset.max.steps(for: .large), 1536)
+        case .full, .v21: return (QualityPreset.max.steps(for: self), 1536)
+        case .fast: return (1, QualityPreset.max.octree)
+        case .trellis2, .pixal3d: return (QualityPreset.max.steps(for: self), 512)
+        }
+    }
+}
+
 struct Project: Identifiable, Codable, Hashable {
     let id: UUID
     var name: String
@@ -318,6 +340,8 @@ struct Project: Identifiable, Codable, Hashable {
     var flowGuidesRaw: [FlowGuide]?
     /// Hand adjustments to the auto-rig (joint offsets, bone influence, weight smoothing).
     var rigConfigRaw: RigConfig?
+    /// Shape settings as they were before "Regenerate at max definition", put back when that run ends.
+    var maxRestoreRaw: SavedShapeSettings?
 
     init(id: UUID = UUID(), name: String, createdAt: Date = Date()) {
         self.id = id

@@ -145,6 +145,9 @@ final class AppRuntime {
             let next = eventQueue.removeFirst()
             let effects = AppReducer.reduce(&state, next)
             for effect in effects { perform(effect) }
+            if case .shapeEngineFinished(let id, _, _) = next, !state.shapeState(id).isRunning {
+                store.restoreMaxDefinition(for: id)
+            }
         }
         draining = false
     }
@@ -155,6 +158,14 @@ final class AppRuntime {
         guard let project = store.project(id) else { return }
         let model: ModelID = project.extraViews.isEmpty ? project.resolvedSettings.model.modelID : .shapeMultiView
         dispatch(.shapeGenerateRequested(project: id, model: model))
+    }
+
+    /// Regenerate with every setting of the project's model at its maximum; the previous settings
+    /// come back when the run ends (or at once if it never started).
+    func requestGenerateMax(_ id: Project.ID) {
+        store.applyMaxDefinition(for: id)
+        requestGenerate(id)
+        if !state.shapeState(id).isRunning { store.restoreMaxDefinition(for: id) }
     }
 
     func requestPaint(_ id: Project.ID) {
