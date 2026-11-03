@@ -73,8 +73,30 @@ enum MeshBoolean {
         let ix = insideByParity(positions: positions, faces: faces, grid: g, axis: 0)
         let iy = insideByParity(positions: positions, faces: faces, grid: g, axis: 1)
         let iz = insideByParity(positions: positions, faces: faces, grid: g, axis: 2)
-        for n in 0..<g.count where (ix[n] ? 1 : 0) + (iy[n] ? 1 : 0) + (iz[n] ? 1 : 0) >= 2 { dist[n] = -dist[n] }
+        var inside = [Bool](repeating: false, count: g.count)
+        for n in 0..<g.count { inside[n] = (ix[n] ? 1 : 0) + (iy[n] ? 1 : 0) + (iz[n] ? 1 : 0) >= 2 }
+        // 3) One-voxel flips left after the vote (a hole's neighbourhood) would surface as specks and dimples;
+        //    a voxel whose six face neighbours (almost) all disagree with it takes their value.
+        let settled = despeckle(inside, g)
+        for n in 0..<g.count where settled[n] { dist[n] = -dist[n] }
         return dist
+    }
+
+    /// Flips voxels that at least 5 of their 6 face neighbours disagree with (isolated blips and one-voxel dents).
+    static func despeckle(_ inside: [Bool], _ g: Grid) -> [Bool] {
+        var out = inside
+        for z in 1..<max(1, g.nz - 1) { for y in 1..<max(1, g.ny - 1) { for x in 1..<max(1, g.nx - 1) {
+            let n = g.index(x, y, z), me = inside[n]
+            var other = 0
+            if inside[n - 1] != me { other += 1 }
+            if inside[n + 1] != me { other += 1 }
+            if inside[n - g.nx] != me { other += 1 }
+            if inside[n + g.nx] != me { other += 1 }
+            if inside[n - g.nx * g.ny] != me { other += 1 }
+            if inside[n + g.nx * g.ny] != me { other += 1 }
+            if other >= 5 { out[n] = !me }
+        } } }
+        return out
     }
 
     /// Per-voxel inside flag from the parity of crossings along +`axis` rays (0 = x, 1 = y, 2 = z), one ray per

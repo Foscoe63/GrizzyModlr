@@ -276,6 +276,8 @@ final class ShapeEngine {
         if res >= 48, let r = MeshBoolean.remesh(positions: p, faces: f, resolution: res) {
             p = MeshOps.smooth(positions: r.positions, faces: r.faces, iterations: max(2, iterations / 3))
             f = r.faces
+            // Drop stray specks the remesh can leave around noisy regions of the generated shape.
+            (p, f, _) = MeshOps.removeSmallComponents(positions: p, faces: f)
         }
         return (p, f)
     }
